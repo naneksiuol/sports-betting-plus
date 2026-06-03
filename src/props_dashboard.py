@@ -52,8 +52,8 @@ def main():
     st.subheader("MLB 1+ Hits Props — Value Dashboard")
     st.caption("Find +EV bets where model fair probability exceeds book implied odds | Data as of latest board")
     
-    # Sidebar Filters
-    with st.sidebar:
+    # ========== SIDEBAR FILTERS WITH FORM ==========
+    with st.sidebar.form(key="filter_form"):
         st.header("⚙️ Filters & Controls")
         
         edge_threshold = st.slider(
@@ -86,26 +86,29 @@ def main():
         player_search = st.text_input(
             "Search Player Name",
             placeholder="e.g. Ohtani, Soto, Witt",
-            help="Case-insensitive partial match."
+            help="Case-insensitive partial match. Click 'Apply Filters' after typing."
         )
         
         st.divider()
-        st.markdown("**Quick Actions**")
-        if st.button("Reset All Filters", use_container_width=True):
-            st.rerun()
         
-        st.caption("Tip: Higher edge + strong recent form = higher confidence value bets.")
+        # This button makes the search + all filters work reliably
+        submitted = st.form_submit_button("Apply Filters", use_container_width=True)
     
-    # Apply filters
-    filtered = df[
-        (df['edge'] >= edge_threshold) &
-        (df['last5'] >= min_last5) &
-        (df['team'].isin(selected_teams)) &
-        (df['player'].str.contains(player_search, case=False, na=False))
-    ].copy()
-    
-    # Sort by edge descending by default
-    filtered = filtered.sort_values('edge', ascending=False)
+    # Only filter when the form is submitted (or on first load)
+    if submitted or 'filtered' not in st.session_state:
+        filtered = df[
+            (df['edge'] >= edge_threshold) &
+            (df['last5'] >= min_last5) &
+            (df['team'].isin(selected_teams)) &
+            (df['player'].str.contains(player_search, case=False, na=False))
+        ].copy()
+        
+        filtered = filtered.sort_values('edge', ascending=False)
+        st.session_state.filtered = filtered
+        st.session_state.edge_threshold = edge_threshold
+    else:
+        filtered = st.session_state.filtered
+        edge_threshold = st.session_state.get('edge_threshold', 0.03)
     
     # ========== KPI CARDS ==========
     st.markdown("### 📊 Key Metrics")
