@@ -411,7 +411,7 @@ def preload_all_sports_parallel(use_live: bool = False):
 
 @st.cache_data(ttl=3600)
 def load_static_mlb() -> pd.DataFrame:
-    data_path = Path("data/hits_board-1.csv")
+    data_path = Path(__file__).parent.parent / "data" / "hits_board-1.csv"
     if not data_path.exists():
         return pd.DataFrame()
     df = pd.read_csv(data_path)
