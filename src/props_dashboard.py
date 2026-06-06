@@ -23,6 +23,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 
+from edge_model import (
+    edge_confidence_score,
+    confidence_label,
+    recommended_stake,
+    edge_rating,
+    clv_summary,
+    clv_rating,
+    kelly_portfolio,
+    get_market_pair_rho,
+)
+from bet_tracker import get_clv_avg
+
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
@@ -494,8 +506,6 @@ def render_bet_tracker():
     with col_log:
         st.markdown('<div class="section-header">➕ Log a Bet</div>', unsafe_allow_html=True)
         with st.form("log_bet_form", clear_on_submit=True):
-            from edge_model import recommended_stake as _rec_stake, edge_rating as _edge_rating
-            from bet_tracker import get_clv_avg as _get_clv_avg
             sport = st.selectbox("Sport", [s for s in SPORTS_CONFIG if SPORTS_CONFIG[s]["status"] == "live"])
             player = st.text_input("Player", placeholder="e.g. Daniel Susac")
             prop = st.text_input("Prop", placeholder="e.g. 1+ Hits, Points O22.5")
@@ -507,8 +517,8 @@ def render_bet_tracker():
             _bankroll = st.session_state.get("bankroll_input", 1000.0)
             _kmult = st.session_state.get("kelly_mult", 0.25)
             # Wire real CLV history into dynamic Kelly — stake scales with proven track record
-            _clv_avg = _get_clv_avg(n_recent=30)
-            _rec = _rec_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
+            _clv_avg = get_clv_avg(n_recent=30)
+            _rec = recommended_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
             _clv_note = f" | CLV avg: {_clv_avg:+.1f}% (last 30)" if _clv_avg is not None else " | CLV: no history yet"
             st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% · {_rec['kelly_multiplier']:.0%} Kelly) | EV: ${_rec['ev_on_stake']:+.2f}{_clv_note}")
             stake = st.number_input("Stake ($)", value=float(_rec["stake"]) or 10.0,
@@ -616,7 +626,6 @@ def render_bet_tracker():
         "CLV = (1/bet_decimal) − (1/closing_decimal)"
     )
 
-    from edge_model import clv_summary, clv_rating
     all_bets_for_clv = load_bets()
     clv_data = clv_summary(all_bets_for_clv)
 
@@ -1333,12 +1342,10 @@ def render_sport_tab(sport: str, use_live: bool):
     st.session_state[f"edge_{sport}"] = edge_threshold
 
     # ── Pre-compute confidence scores for all filtered rows ──────────────────
-    from edge_model import edge_confidence_score as _conf_score, confidence_label as _conf_label
-    from bet_tracker import get_clv_avg as _get_clv_avg
-    _clv_avg_global = _get_clv_avg(n_recent=30)  # shared CLV history for all rows
+    _clv_avg_global = get_clv_avg(n_recent=30)  # shared CLV history for all rows
 
     def _row_confidence(row) -> int:
-        return _conf_score(
+        return edge_confidence_score(
             edge=float(row.get("edge", 0)),
             fair_est=float(row.get("fair_est", 0.5)),
             edge_confirmed=bool(row.get("edge_confirmed", False)),
@@ -1363,7 +1370,7 @@ def render_sport_tab(sport: str, use_live: bool):
     k3.metric("Avg Edge", f"{avg_edge:.2%}")
     if best is not None:
         best_conf = int(best.get("confidence", 0))
-        best_label, _ = _conf_label(best_conf)
+        best_label, _ = confidence_label(best_conf)
         k4.metric("Best Play", best["player"], delta=f"{best_label} · {best_conf}/100")
     else:
         k4.metric("Best Play", "—")
@@ -1371,7 +1378,7 @@ def render_sport_tab(sport: str, use_live: bool):
     # ── Best Bet of the Day widget ────────────────────────────────────────────
     if best is not None:
         best_conf  = int(best.get("confidence", 0))
-        best_label, best_color = _conf_label(best_conf)
+        best_label, best_color = confidence_label(best_conf)
         best_prop  = market_labels.get(best.get("market",""), best.get("market",""))
         best_odds  = int(best.get("over_odds", 0))
         best_odds_fmt = f"+{best_odds}" if best_odds > 0 else str(best_odds)
@@ -1486,7 +1493,6 @@ def render_sport_tab(sport: str, use_live: bool):
     if len(filtered) == 0:
         st.warning("No value bets match your filters. Try lowering the edge threshold.")
     else:
-        from edge_model import recommended_stake, edge_rating
         from line_movement import snapshot_key, format_movement
         bankroll = st.session_state.get("bankroll_input", 1000.0)
         kelly_mult = st.session_state.get("kelly_mult", 0.25)
@@ -2106,7 +2112,6 @@ def render_sport_tab(sport: str, use_live: bool):
         # ── Prop Correlation Heatmap ──
         if len(filtered) >= 2:
             try:
-                from edge_model import get_market_pair_rho as _get_rho
                 import numpy as _np
                 # Build matrix for top-N plays by confidence
                 heat_df = filtered.head(20).copy()
@@ -2120,7 +2125,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             mat[ii, jj] = 1.0
                         else:
                             same_p = (heat_df.iloc[ii]["player"] == heat_df.iloc[jj]["player"])
-                            mat[ii, jj] = _get_rho(
+                            mat[ii, jj] = get_market_pair_rho(
                                 heat_df.iloc[ii]["market"],
                                 heat_df.iloc[jj]["market"],
                                 same_p,
@@ -2261,10 +2266,8 @@ def main():
             if st.button("🔢 Optimize", key="kp_btn", use_container_width=True):
                 with st.spinner("Optimizing…"):
                     try:
-                        from edge_model import kelly_portfolio as _kp, edge_confidence_score as _kpecs
-                        from bet_tracker import get_clv_avg as _kpclv
                         _kp_df, _ = load_data(_kp_sport, use_live)
-                        _kp_clv = _kpclv(n_recent=30)
+                        _kp_clv = get_clv_avg(n_recent=30)
                         if _kp_df is not None and not _kp_df.empty:
                             _kp_plays = [
                                 r.to_dict()
@@ -2272,7 +2275,7 @@ def main():
                                 if float(r.get("edge", 0)) >= _kp_min_edge
                             ]
                             if _kp_plays:
-                                _kp_result = _kp(
+                                _kp_result = kelly_portfolio(
                                     _kp_plays, bankroll,
                                     max_total_pct=_kp_max_total,
                                     clv_avg=_kp_clv,
@@ -2302,9 +2305,8 @@ def main():
         if st.button("🎯 Best 3 Bets Today", use_container_width=True, type="primary",
                      help="Cross-sport: find the top 3 highest-confidence props right now and log them to tracker"):
             with st.spinner("Scanning all sports for today's best plays…"):
-                from edge_model import edge_confidence_score as _ecs, confidence_label as _clbl
-                from bet_tracker import add_bet as _add_bet, get_clv_avg as _get_clv_avg
-                _clv_avg_b3 = _get_clv_avg(n_recent=30)
+                from bet_tracker import add_bet
+                _clv_avg_b3 = get_clv_avg(n_recent=30)
                 _all_candidates = []
                 for _sport in [s for s, c in SPORTS_CONFIG.items() if c.get("status") == "live"]:
                     try:
@@ -2312,7 +2314,7 @@ def main():
                         if _df is None or _df.empty:
                             continue
                         for _, _row in _df.iterrows():
-                            _score = _ecs(
+                            _score = edge_confidence_score(
                                 float(_row.get("edge", 0)),
                                 float(_row.get("fair_est", 0.5)),
                                 bool(_row.get("edge_confirmed", False)),
@@ -2344,15 +2346,14 @@ def main():
                     _kmult_b3   = st.session_state.get("kelly_mult", 0.25)
                     _logged = []
                     for _p in _top3:
-                        _lbl, _col = _clbl(_p["confidence"])
+                        _lbl, _col = confidence_label(_p["confidence"])
                         try:
-                            from edge_model import recommended_stake as _rstk
-                            _rec_b3 = _rstk(_p["fair_est"], float(_p["over_odds"]),
+                            _rec_b3 = recommended_stake(_p["fair_est"], float(_p["over_odds"]),
                                             _bankroll_b3, _kmult_b3, _clv_avg_b3)
                             _stake_b3 = _rec_b3["stake"]
                         except Exception:
                             _stake_b3 = round(_bankroll_b3 * 0.02, 2)
-                        _add_bet(
+                        add_bet(
                             _p["sport"], _p["player"],
                             f"{_p['market']} O{_p['line']}",
                             float(_p["line"]) if _p["line"] else 0.5,
