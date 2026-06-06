@@ -43,7 +43,8 @@ def _compute_clv(placed_odds: float, reference_odds: float) -> float:
 
 def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
             stake: float, book: str = "", notes: str = "",
-            sharp_odds: int = None, fair_est: float = None) -> dict:
+            sharp_odds: int = None, fair_est: float = None,
+            is_parlay: bool = False) -> dict:
     """
     Log a bet. Automatically computes opening CLV if sharp_odds provided.
     sharp_odds = Pinnacle/Consensus line at bet placement time.
@@ -74,6 +75,7 @@ def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
         "closing_odds": None,
         "clv": None,                  # CLV vs true closing line (filled later)
         "notes": notes,
+        "is_parlay": is_parlay,
     }
     bets = load_bets()
     bets.append(bet)

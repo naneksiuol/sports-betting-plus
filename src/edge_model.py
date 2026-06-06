@@ -699,3 +699,119 @@ def decimal_to_american_float(dec: float) -> str:
     if dec >= 2.0:
         return f"+{int(round((dec - 1) * 100))}"
     return f"{int(round(-100 / (dec - 1)))}"
+
+
+# ── Kelly Portfolio Optimizer ─────────────────────────────────────────────────
+
+def kelly_portfolio(
+    plays: list[dict],
+    bankroll: float,
+    max_single_pct: float = 0.08,
+    max_total_pct: float = 0.25,
+    clv_avg: float | None = None,
+) -> list[dict]:
+    """
+    Multi-bet Kelly portfolio optimizer.
+
+    Unlike single-bet Kelly, this function considers the entire slate of plays
+    simultaneously and scales allocations to avoid over-betting correlated legs.
+
+    Algorithm:
+      1. Compute individual Kelly fractions for each play
+      2. Cap each at max_single_pct of bankroll
+      3. Detect correlation clusters (same player or overlapping markets)
+      4. Apply correlation penalty: reduce cluster bets by √(1 - ρ_avg)
+      5. Scale final allocation so total exposure ≤ max_total_pct of bankroll
+      6. Sort by recommended stake descending
+
+    Args:
+        plays:          List of dicts with keys: player, market, fair_est,
+                        over_odds (American), edge. All others optional.
+        bankroll:       Current bankroll in dollars.
+        max_single_pct: Hard cap per bet as fraction of bankroll (default 8%).
+        max_total_pct:  Hard cap on total exposure across all bets (default 25%).
+        clv_avg:        Recent CLV average for dynamic Kelly scaling.
+
+    Returns:
+        List of play dicts enriched with 'stake', 'kelly_pct', 'portfolio_pct',
+        sorted by stake descending.
+    """
+    if not plays or bankroll <= 0:
+        return []
+
+    results = []
+    for play in plays:
+        win_prob = float(play.get("fair_est", 0.5))
+        odds     = float(play.get("over_odds", -110))
+        edge     = float(play.get("edge", 0.0))
+        if edge <= 0 or win_prob <= 0:
+            continue
+
+        dec = american_to_decimal(odds)
+        full_k = kelly_fraction(win_prob, dec)
+        dyn_mult = dynamic_kelly_multiplier(edge, clv_avg)
+        raw_pct = full_k * dyn_mult
+
+        # Cap at single-bet max
+        capped_pct = min(raw_pct, max_single_pct)
+
+        results.append({
+            **play,
+            "_full_kelly":  full_k,
+            "_raw_pct":     raw_pct,
+            "_kelly_pct":   capped_pct,
+            "_win_prob":    win_prob,
+            "_dec_odds":    dec,
+        })
+
+    if not results:
+        return []
+
+    # Correlation penalty: detect same-player plays
+    for i, r in enumerate(results):
+        player_i  = r.get("player", f"__p{i}")
+        market_i  = r.get("market", "")
+        corr_sum  = 0.0
+        corr_n    = 0
+        for j, s in enumerate(results):
+            if i == j:
+                continue
+            player_j = s.get("player", f"__p{j}")
+            market_j = s.get("market", "")
+            same_p   = (player_i.strip().lower() == player_j.strip().lower())
+            rho      = get_market_pair_rho(market_i, market_j, same_p)
+            corr_sum += abs(rho)
+            corr_n   += 1
+
+        avg_rho = (corr_sum / corr_n) if corr_n > 0 else 0.0
+        # Penalty: reduce allocation by correlation factor
+        penalty = math.sqrt(max(0.0, 1.0 - avg_rho))
+        r["_portfolio_pct"] = r["_kelly_pct"] * penalty
+
+    # Scale so total ≤ max_total_pct
+    total_raw = sum(r["_portfolio_pct"] for r in results)
+    scale = min(1.0, max_total_pct / total_raw) if total_raw > 0 else 1.0
+
+    output = []
+    for r in results:
+        final_pct = r["_portfolio_pct"] * scale
+        stake     = round(bankroll * final_pct, 2)
+        ev_dollar = round(r.get("edge", 0) * stake, 2)
+        output.append({
+            "player":        r.get("player", ""),
+            "team":          r.get("team", ""),
+            "market":        r.get("market", ""),
+            "line":          r.get("line", ""),
+            "over_odds":     r.get("over_odds", ""),
+            "fair_est":      r.get("fair_est", 0),
+            "edge":          r.get("edge", 0),
+            "confidence":    r.get("confidence", 0),
+            "full_kelly_pct":  round(r["_full_kelly"] * 100, 2),
+            "kelly_pct":       round(r["_kelly_pct"] * 100, 2),
+            "portfolio_pct":   round(final_pct * 100, 3),
+            "stake":           stake,
+            "ev_on_stake":     ev_dollar,
+        })
+
+    output.sort(key=lambda x: x["stake"], reverse=True)
+    return output

@@ -518,6 +518,7 @@ def render_bet_tracker():
             stake = st.number_input("Stake ($)", value=float(_rec["stake"]) or 10.0,
                                     step=1.0, min_value=0.5)
             book = st.text_input("Sportsbook", placeholder="DraftKings, FanDuel...")
+            is_parlay_bet = st.checkbox("🎰 Is Parlay?", value=False, help="Mark if this is a parlay ticket")
             notes = st.text_input("Notes", placeholder="Optional")
             if st.form_submit_button("🎯 Log Bet", use_container_width=True):
                 if player and prop:
@@ -536,7 +537,8 @@ def render_bet_tracker():
                     except Exception:
                         pass
                     add_bet(sport, player, prop, line, int(odds), stake, book, notes,
-                            sharp_odds=sharp_odds_val, fair_est=win_prob/100)
+                            sharp_odds=sharp_odds_val, fair_est=win_prob/100,
+                            is_parlay=is_parlay_bet)
                     def _american_to_dec(o):
                         return (o/100+1) if o > 0 else (100/abs(o)+1)
                     clv_msg = f" | Opening CLV: {((1/_american_to_dec(sharp_odds_val))-(1/_american_to_dec(int(odds))))*100:+.1f}% vs sharp" if sharp_odds_val else ""
@@ -805,6 +807,62 @@ def render_bet_tracker():
                     "Profit": f"${d['profit']:+.2f}"
                 })
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        # ── Parlay ROI History Chart ──
+        parlay_bets = [b for b in settled if b.get("is_parlay") or b.get("parlay_legs")]
+        if parlay_bets:
+            st.markdown("#### 🎰 Parlay ROI History")
+            parlay_rows = []
+            for b in parlay_bets:
+                legs = b.get("parlay_legs", 1)
+                if isinstance(legs, list):
+                    legs = len(legs)
+                expected_ev_pct = b.get("parlay_ev_pct") or b.get("ev_pct") or 0.0
+                actual_profit   = b.get("profit") or 0.0
+                stake           = b.get("stake") or 0.0
+                actual_roi_pct  = (actual_profit / stake * 100) if stake else 0.0
+                parlay_rows.append({
+                    "date":     b.get("date", ""),
+                    "legs":     int(legs),
+                    "expected": round(float(expected_ev_pct), 2),
+                    "actual":   round(actual_roi_pct, 2),
+                    "result":   b.get("result", "pending"),
+                    "label":    f"{b.get('date','?')} ({legs}-leg)",
+                })
+            if parlay_rows:
+                pr_df = pd.DataFrame(parlay_rows).sort_values("date")
+                fig_p = go.Figure()
+                fig_p.add_trace(go.Bar(
+                    x=pr_df["label"], y=pr_df["expected"],
+                    name="Expected EV%", marker_color="rgba(167,139,250,0.6)",
+                ))
+                fig_p.add_trace(go.Bar(
+                    x=pr_df["label"], y=pr_df["actual"],
+                    name="Actual ROI%",
+                    marker_color=[
+                        "rgba(52,211,153,0.8)" if r == "win" else
+                        "rgba(255,96,96,0.8)"  if r == "loss" else
+                        "rgba(120,120,140,0.5)"
+                        for r in pr_df["result"]
+                    ],
+                ))
+                fig_p.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
+                fig_p.update_layout(
+                    title="Parlay: Expected EV% vs Actual ROI%",
+                    barmode="group",
+                    height=360,
+                    **PLOT_LAYOUT,
+                )
+                st.plotly_chart(fig_p, use_container_width=True)
+                total_parlay_profit = sum(b.get("profit") or 0 for b in parlay_bets)
+                parlay_wins = sum(1 for b in parlay_bets if b.get("result") == "win")
+                st.caption(
+                    f"📊 {len(parlay_bets)} parlays logged · "
+                    f"{parlay_wins} wins · "
+                    f"Total P&L: **${total_parlay_profit:+.2f}**"
+                )
+        else:
+            st.caption("💡 Parlay ROI chart appears once you log parlays (tick 'Is Parlay' when logging).")
     else:
         st.info("📊 Charts will appear once you have settled bets.")
 
@@ -2006,7 +2064,7 @@ def render_sport_tab(sport: str, use_live: bool):
 
     # ── Charts ──
     st.markdown("### 📈 Visual Analysis")
-    tab1, tab2, tab3 = st.tabs(["🔍 Fair vs Book", "📊 Top Plays", "📉 Edge Distribution"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Fair vs Book", "📊 Top Plays", "📉 Edge Distribution", "🔗 Correlation"])
 
     with tab1:
         if len(filtered) > 0:
@@ -2045,6 +2103,71 @@ def render_sport_tab(sport: str, use_live: bool):
                            annotation_font_color="#ff6060")
             fig3.update_layout(**PLOT_LAYOUT)
             st.plotly_chart(fig3, use_container_width=True)
+
+    with tab4:
+        # ── Prop Correlation Heatmap ──
+        if len(filtered) >= 2:
+            try:
+                from edge_model import get_market_pair_rho as _get_rho
+                import numpy as _np
+                # Build matrix for top-N plays by confidence
+                heat_df = filtered.head(20).copy()
+                labels = (heat_df["player"].str.split().str[-1].fillna("?") +
+                          "\n" + heat_df["market"].str.replace("_", " ", regex=False).fillna("?"))
+                n = len(heat_df)
+                mat = _np.zeros((n, n))
+                for ii in range(n):
+                    for jj in range(n):
+                        if ii == jj:
+                            mat[ii, jj] = 1.0
+                        else:
+                            same_p = (heat_df.iloc[ii]["player"] == heat_df.iloc[jj]["player"])
+                            mat[ii, jj] = _get_rho(
+                                heat_df.iloc[ii]["market"],
+                                heat_df.iloc[jj]["market"],
+                                same_p,
+                            )
+
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=mat,
+                    x=labels.tolist(),
+                    y=labels.tolist(),
+                    colorscale=[
+                        [0.0, "#1a2a5a"],
+                        [0.5, "#1a1a24"],
+                        [1.0, "#7c3aed"],
+                    ],
+                    zmin=-1, zmax=1,
+                    colorbar=dict(title="ρ", tickfont=dict(color="#888")),
+                    hovertemplate="%{y} × %{x}<br>ρ = %{z:.2f}<extra></extra>",
+                ))
+                fig_heat.update_layout(
+                    title="Prop Correlation Matrix (Top 20 plays)",
+                    height=500,
+                    xaxis=dict(tickfont=dict(size=9, color="#888")),
+                    yaxis=dict(tickfont=dict(size=9, color="#888")),
+                    **PLOT_LAYOUT,
+                )
+                st.plotly_chart(fig_heat, use_container_width=True)
+                st.caption(
+                    "Purple = highly correlated (same player, overlapping markets). "
+                    "Dark = uncorrelated. Avoid stacking high-ρ legs in parlays — "
+                    "the book's SGP price already penalises you for the correlation."
+                )
+            except Exception as _e:
+                st.info(f"Heatmap unavailable: {_e}")
+        else:
+            st.info("Need at least 2 props to draw correlation heatmap.")
+
+    # ── Player News / Injury Feed ──
+    st.divider()
+    with st.expander("📰 Player News & Injury Feed", expanded=False):
+        try:
+            from news_feed import render_news_sidebar as _render_news
+            _players = filtered["player"].dropna().unique().tolist()[:40]
+            _render_news(_players, sport)
+        except Exception as _ne:
+            st.caption(f"News unavailable: {_ne}")
 
     # ── AI Chat ──
     if GROQ_API_KEY:
@@ -2128,6 +2251,45 @@ def main():
                                       format_func=lambda x: {0.1: "1/10 (Very Safe)", 0.25: "1/4 (Recommended)", 0.5: "1/2 (Aggressive)", 1.0: "Full (Risky)"}[x],
                                       key="kelly_mult")
         st.caption("¼ Kelly is the professional standard. Full Kelly risks ruin.")
+
+        # ── Kelly Portfolio Optimizer (sidebar) ──
+        st.divider()
+        with st.expander("📐 Kelly Portfolio Optimizer", expanded=False):
+            st.caption("Allocate bankroll optimally across multiple correlated bets.")
+            _kp_sport = st.selectbox("Sport", [s for s in SPORTS_CONFIG if SPORTS_CONFIG[s]["status"] == "live"],
+                                     key="kp_sport")
+            _kp_min_edge = st.slider("Min Edge %", 1, 15, 3, key="kp_min_edge") / 100
+            _kp_max_total = st.slider("Max Total Exposure %", 5, 50, 20, key="kp_max_total") / 100
+            if st.button("🔢 Optimize", key="kp_btn", use_container_width=True):
+                with st.spinner("Optimizing…"):
+                    try:
+                        from edge_model import kelly_portfolio as _kp, edge_confidence_score as _kpecs
+                        from bet_tracker import get_clv_avg as _kpclv
+                        _kp_df, _ = load_data(_kp_sport, use_live)
+                        _kp_clv = _kpclv(n_recent=30)
+                        if _kp_df is not None and not _kp_df.empty:
+                            _kp_plays = [
+                                r.to_dict()
+                                for _, r in _kp_df.iterrows()
+                                if float(r.get("edge", 0)) >= _kp_min_edge
+                            ]
+                            if _kp_plays:
+                                _kp_result = _kp(
+                                    _kp_plays, bankroll,
+                                    max_total_pct=_kp_max_total,
+                                    clv_avg=_kp_clv,
+                                )
+                                for _kpr in _kp_result[:8]:
+                                    st.markdown(
+                                        f"**{_kpr['player']}** {_kpr['market'].replace('_',' ')}  \n"
+                                        f"Portfolio: {_kpr['portfolio_pct']:.2f}% · "
+                                        f"**${_kpr['stake']:.2f}** · EV ${_kpr['ev_on_stake']:+.2f}"
+                                    )
+                            else:
+                                st.info("No plays meet the minimum edge threshold.")
+                    except Exception as _kpe:
+                        st.error(f"Optimizer error: {_kpe}")
+
         st.divider()
         st.markdown("## 🔍 Filters")
 
@@ -2135,6 +2297,80 @@ def main():
     # This is the key performance upgrade — all sports load simultaneously so
     # tab switches are instant instead of each one waiting ~4s sequentially.
     preload_all_sports_parallel(use_live)
+
+    # ── 🎯 Best 3 Bets Today ─────────────────────────────────────────────────
+    _b3_col, _ = st.columns([1, 3])
+    with _b3_col:
+        if st.button("🎯 Best 3 Bets Today", use_container_width=True, type="primary",
+                     help="Cross-sport: find the top 3 highest-confidence props right now and log them to tracker"):
+            with st.spinner("Scanning all sports for today's best plays…"):
+                from edge_model import edge_confidence_score as _ecs, confidence_label as _clbl
+                from bet_tracker import add_bet as _add_bet, get_clv_avg as _get_clv_avg
+                _clv_avg_b3 = _get_clv_avg(n_recent=30)
+                _all_candidates = []
+                for _sport in [s for s, c in SPORTS_CONFIG.items() if c.get("status") == "live"]:
+                    try:
+                        _df, _ = load_data(_sport, use_live)
+                        if _df is None or _df.empty:
+                            continue
+                        for _, _row in _df.iterrows():
+                            _score = _ecs(
+                                float(_row.get("edge", 0)),
+                                float(_row.get("fair_est", 0.5)),
+                                bool(_row.get("edge_confirmed", False)),
+                                int(_row.get("n_books", 1)),
+                                float(_row.get("over_odds", -110)),
+                                _clv_avg_b3,
+                            )
+                            _all_candidates.append({
+                                "sport":    _sport,
+                                "player":   _row.get("player", ""),
+                                "team":     _row.get("team", ""),
+                                "market":   _row.get("market", ""),
+                                "line":     _row.get("line", ""),
+                                "over_odds": _row.get("over_odds", -110),
+                                "fair_est": _row.get("fair_est", 0.5),
+                                "edge":     _row.get("edge", 0),
+                                "confidence": _score,
+                            })
+                    except Exception:
+                        pass
+
+                _all_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+                _top3 = _all_candidates[:3]
+
+                if not _top3:
+                    st.warning("No plays found across live sports right now.")
+                else:
+                    _bankroll_b3 = st.session_state.get("bankroll_input", 1000.0)
+                    _kmult_b3   = st.session_state.get("kelly_mult", 0.25)
+                    _logged = []
+                    for _p in _top3:
+                        _lbl, _col = _clbl(_p["confidence"])
+                        try:
+                            from edge_model import recommended_stake as _rstk
+                            _rec_b3 = _rstk(_p["fair_est"], float(_p["over_odds"]),
+                                            _bankroll_b3, _kmult_b3, _clv_avg_b3)
+                            _stake_b3 = _rec_b3["stake"]
+                        except Exception:
+                            _stake_b3 = round(_bankroll_b3 * 0.02, 2)
+                        _add_bet(
+                            _p["sport"], _p["player"],
+                            f"{_p['market']} O{_p['line']}",
+                            float(_p["line"]) if _p["line"] else 0.5,
+                            int(float(_p["over_odds"])),
+                            _stake_b3, "Best3Auto",
+                            f"Auto-logged by Best 3 Bets · Confidence {_p['confidence']}/100",
+                            fair_est=_p["fair_est"],
+                        )
+                        _logged.append(
+                            f"**{_p['player']}** ({_p['sport']}) · {_p['market'].replace('_',' ')} "
+                            f"O{_p['line']} @ {_p['over_odds']:+g} · {_lbl} {_p['confidence']}/100"
+                        )
+
+                    st.success(f"✅ Logged {len(_logged)} best bet(s) to Tracker:")
+                    for _line in _logged:
+                        st.markdown(f"- {_line}")
 
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
