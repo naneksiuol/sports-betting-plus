@@ -1776,11 +1776,17 @@ def render_sport_tab(sport: str, use_live: bool):
                 return "empty"
 
         _parlay_key = f"parlay_report_{sport}_{_df_hash(filtered)}_{_df_hash(sgp_pool)}_{stake}"
-        if _parlay_key not in st.session_state:
+        # Expire cache after 5 min so stale parlays don't linger all day
+        _parlay_ts_key = _parlay_key + "_ts"
+        import time as _time
+        _now = _time.time()
+        if (_parlay_key not in st.session_state or
+                _now - st.session_state.get(_parlay_ts_key, 0) > 300):
             with st.spinner("⚡ Building parlays & SGPs…"):
                 st.session_state[_parlay_key] = build_parlay_report(
                     filtered, stake=stake, full_df=sgp_pool
                 )
+                st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
 
         st.markdown("#### 🏆 Top 10 Best Edge Candidates")

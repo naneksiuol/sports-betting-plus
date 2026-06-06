@@ -66,6 +66,7 @@ def _fetch_completed_games(sport: str) -> list[dict]:
             params={"period": "game", "bookIds": BOOK_IDS},
             headers=HEADERS, timeout=12,
         )
+        r.raise_for_status()
         return r.json().get("games", [])
     except Exception:
         return []

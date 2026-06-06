@@ -783,8 +783,8 @@ def kelly_portfolio(
             corr_sum += abs(rho)
             corr_n   += 1
 
-        avg_rho = (corr_sum / corr_n) if corr_n > 0 else 0.0
-        # Penalty: reduce allocation by correlation factor
+        avg_rho = min((corr_sum / corr_n) if corr_n > 0 else 0.0, 1.0)
+        # Penalty: reduce allocation by correlation factor (clamp avg_rho ≤ 1 to keep sqrt real)
         penalty = math.sqrt(max(0.0, 1.0 - avg_rho))
         r["_portfolio_pct"] = r["_kelly_pct"] * penalty
 
