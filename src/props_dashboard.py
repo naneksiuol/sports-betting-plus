@@ -2432,18 +2432,11 @@ def main():
                 st.session_state["_sports_preloaded"] = False
                 st.rerun()
             else:
-                # Schedule next check via st.rerun after remaining seconds
+                # Sleep on the main Streamlit thread then rerun to tick the countdown.
+                # Each session runs in its own thread so this only blocks this user's session.
                 _check_in = min(30, int(_remaining) + 1)
-                import threading as _th
-                def _rerun_after(secs):
-                    _t.sleep(secs)
-                    try:
-                        st.rerun()
-                    except Exception:
-                        pass
-                if not st.session_state.get(f"_ar_thread_{int(_remaining)}"):
-                    st.session_state[f"_ar_thread_{int(_remaining)}"] = True
-                    _th.Thread(target=_rerun_after, args=(_check_in,), daemon=True).start()
+                _t.sleep(_check_in)
+                st.rerun()
         else:
             st.session_state["_last_refresh"] = __import__("time").time()
 
