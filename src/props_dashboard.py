@@ -394,22 +394,18 @@ def load_scraped_data(sport: str) -> pd.DataFrame:
 
 def preload_all_sports_parallel(use_live: bool = False):
     """
-    Fire off all active sports data loads in parallel threads.
-    Since load_scraped_data / load_live_data are @st.cache_data, this warms the
-    cache so tab switches are instant instead of each sport loading sequentially.
+    Warm the @st.cache_data caches for all live sports.
+    Runs sequentially on the main thread to avoid Streamlit cache-thread issues.
     Only runs once per session (tracked in session_state).
     """
     if st.session_state.get("_sports_preloaded"):
         return
-    from concurrent.futures import ThreadPoolExecutor
     live_sports = [s for s, cfg in SPORTS_CONFIG.items() if cfg.get("status", "live") == "live"]
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        futures = [ex.submit(load_scraped_data, s) for s in live_sports]
-        for f in futures:
-            try:
-                f.result(timeout=20)
-            except Exception:
-                pass
+    for s in live_sports:
+        try:
+            load_scraped_data(s)
+        except Exception:
+            pass
     st.session_state["_sports_preloaded"] = True
 
 
@@ -1766,24 +1762,26 @@ def render_sport_tab(sport: str, use_live: bool):
             & (df["player"].str.contains(player_search, case=False, na=False) if player_search else True)
         ].copy()
 
-        # ── Lazy SGP cache (item 6) ──────────────────────────────────────────
-        # build_diverse_sgps is combinatorial — O(C(12,n)) per game.
-        # Cache by a hash of the pool data so it only recomputes when odds change,
-        # not on every sidebar interaction.
+        # ── Lazy SGP cache ────────────────────────────────────────────────────
+        # Use session_state keyed by sport + data hash to avoid the Streamlit
+        # @st.cache_data closure-collision bug (all sport tabs define identically-
+        # coded nested functions → same cache namespace → wrong parlay returned).
         import hashlib as _hl
-
-        @st.cache_data(ttl=300, show_spinner="⚡ Building parlays & SGPs…")
-        def _cached_parlay_report(_df_hash: str, _pool_hash: str, _stake: float) -> dict:
-            return build_parlay_report(filtered, stake=_stake, full_df=sgp_pool)
 
         def _df_hash(d: pd.DataFrame) -> str:
             try:
                 key = str(round(d["edge"].sum(), 6)) + str(len(d)) + str(d["over_odds"].sum() if "over_odds" in d.columns else 0)
                 return _hl.md5(key.encode()).hexdigest()[:12]
             except Exception:
-                return "0"
+                return "empty"
 
-        report = _cached_parlay_report(_df_hash(filtered), _df_hash(sgp_pool), stake)
+        _parlay_key = f"parlay_report_{sport}_{_df_hash(filtered)}_{_df_hash(sgp_pool)}_{stake}"
+        if _parlay_key not in st.session_state:
+            with st.spinner("⚡ Building parlays & SGPs…"):
+                st.session_state[_parlay_key] = build_parlay_report(
+                    filtered, stake=stake, full_df=sgp_pool
+                )
+        report = st.session_state[_parlay_key]
 
         st.markdown("#### 🏆 Top 10 Best Edge Candidates")
         st.caption("Highest edge plays within -300 to +300 odds — sorted by edge, best value first.")
