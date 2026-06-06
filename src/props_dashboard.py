@@ -2432,11 +2432,13 @@ def main():
                 st.session_state["_sports_preloaded"] = False
                 st.rerun()
             else:
-                # Sleep on the main Streamlit thread then rerun to tick the countdown.
-                # Each session runs in its own thread so this only blocks this user's session.
-                _check_in = min(30, int(_remaining) + 1)
-                _t.sleep(_check_in)
-                st.rerun()
+                # Use browser-side meta-refresh so Python thread is never blocked.
+                # The browser reloads the page after _remaining seconds; Python stays free.
+                _refresh_secs = max(1, int(_remaining))
+                st.components.v1.html(
+                    f'<meta http-equiv="refresh" content="{_refresh_secs}">',
+                    height=0,
+                )
         else:
             st.session_state["_last_refresh"] = __import__("time").time()
 
