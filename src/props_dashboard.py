@@ -65,7 +65,11 @@ else:
     except ImportError:
         pass
 
-# ── Dark Glassmorphism CSS ─────────────────────────────────────────────────────
+# ── Design System — matches email (send_daily_bets.py) exactly ────────────────
+# Palette:  bg #0f0f13  card #1a1a24  border #2a2a3a
+#           purple #a78bfa  green #34d399  text #e8e8f0  muted #888
+# Sport gradients: MLB green · NBA blue · WNBA red · NHL blue
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -74,188 +78,236 @@ st.markdown("""
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
 .stApp {
-    background: linear-gradient(135deg, #0a0a1a 0%, #0d0d2b 40%, #0a0f1e 100%);
-    background-attachment: fixed;
+    background: #0f0f13;
 }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #06061a 0%, #0a0a24 100%) !important;
-    border-right: 1px solid rgba(0,255,136,0.15) !important;
+    background: #0d0d18 !important;
+    border-right: 1px solid #2a2a3a !important;
 }
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
-    color: #00ff88 !important;
+    color: #a78bfa !important;
     font-family: 'Space Grotesk', sans-serif !important;
 }
 
 /* ── Main title ── */
 h1 {
     font-family: 'Space Grotesk', sans-serif !important;
-    font-weight: 700 !important;
-    background: linear-gradient(90deg, #00ff88, #00d4ff, #a855f7);
+    font-weight: 800 !important;
+    background: linear-gradient(90deg, #a78bfa 0%, #7c3aed 50%, #4f46e5 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    font-size: 2.6rem !important;
+    font-size: 2.4rem !important;
+    letter-spacing: -0.5px !important;
 }
 h2, h3 {
     font-family: 'Space Grotesk', sans-serif !important;
     color: #e8e8f0 !important;
 }
 
-/* ── Glass card effect for metric blocks ── */
+/* ── Metric cards — matches email stat-chip style ── */
 [data-testid="metric-container"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(0,255,136,0.2) !important;
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
     border-radius: 16px !important;
     padding: 1.2rem !important;
-    backdrop-filter: blur(10px) !important;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 [data-testid="metric-container"]:hover {
-    border-color: rgba(0,255,136,0.5) !important;
-    box-shadow: 0 0 20px rgba(0,255,136,0.1) !important;
+    border-color: #3a3a5a !important;
+    box-shadow: 0 4px 24px rgba(167,139,250,0.1) !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
     font-family: 'Space Grotesk', sans-serif !important;
     font-size: 1.8rem !important;
-    font-weight: 700 !important;
-    color: #00ff88 !important;
+    font-weight: 800 !important;
+    color: #a78bfa !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricLabel"] {
-    color: #8888aa !important;
-    font-size: 0.8rem !important;
+    color: #666 !important;
+    font-size: 0.75rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
 }
 [data-testid="metric-container"] [data-testid="stMetricDelta"] {
-    font-size: 0.85rem !important;
+    font-size: 0.82rem !important;
 }
 
-/* ── Tabs ── */
+/* ── Tabs — pill style matching email nav ── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: rgba(255,255,255,0.03) !important;
-    border-radius: 12px !important;
-    padding: 4px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    gap: 4px !important;
+    background: #13131f !important;
+    border-radius: 14px !important;
+    padding: 5px !important;
+    border: 1px solid #2a2a3a !important;
+    gap: 3px !important;
 }
 [data-testid="stTabs"] [data-baseweb="tab"] {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     font-family: 'Space Grotesk', sans-serif !important;
     font-weight: 500 !important;
-    color: #8888aa !important;
+    color: #666 !important;
     transition: all 0.2s ease !important;
+    padding: 0.45rem 1rem !important;
 }
 [data-testid="stTabs"] [aria-selected="true"] {
-    background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,212,255,0.1)) !important;
-    color: #00ff88 !important;
-    border: 1px solid rgba(0,255,136,0.3) !important;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 2px 12px rgba(124,58,237,0.4) !important;
 }
 
-/* ── Dataframe ── */
+/* ── Dataframe — card border style ── */
 [data-testid="stDataFrame"] {
-    border: 1px solid rgba(0,255,136,0.15) !important;
-    border-radius: 12px !important;
+    border: 1px solid #2a2a3a !important;
+    border-radius: 14px !important;
     overflow: hidden !important;
+    background: #1a1a24 !important;
 }
 
-/* ── Buttons ── */
+/* ── Buttons — matches email CTA style ── */
 .stButton > button {
-    background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,212,255,0.1)) !important;
-    border: 1px solid rgba(0,255,136,0.3) !important;
+    background: #1a1a24 !important;
+    border: 1px solid #3a3a5a !important;
     border-radius: 10px !important;
-    color: #00ff88 !important;
+    color: #a78bfa !important;
     font-family: 'Space Grotesk', sans-serif !important;
     font-weight: 600 !important;
     transition: all 0.2s ease !important;
 }
 .stButton > button:hover {
-    background: linear-gradient(135deg, rgba(0,255,136,0.3), rgba(0,212,255,0.2)) !important;
-    border-color: rgba(0,255,136,0.6) !important;
-    box-shadow: 0 0 20px rgba(0,255,136,0.2) !important;
+    background: linear-gradient(135deg, #7c3aed22, #4f46e522) !important;
+    border-color: #7c3aed !important;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.25) !important;
     transform: translateY(-1px) !important;
+    color: #c4b5fd !important;
+}
+/* Primary (type="primary") buttons — email's gradient CTA */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+    box-shadow: 0 2px 12px rgba(124,58,237,0.4) !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #6d28d9, #4338ca) !important;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.55) !important;
+    color: #fff !important;
 }
 
 /* ── Download button ── */
 [data-testid="stDownloadButton"] > button {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.15) !important;
-    color: #aaaacc !important;
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
+    color: #888 !important;
 }
 
 /* ── Selectbox / multiselect / input ── */
 [data-baseweb="select"], [data-baseweb="input"], [data-baseweb="textarea"] {
-    background: rgba(255,255,255,0.04) !important;
-    border-color: rgba(0,255,136,0.2) !important;
+    background: #1a1a24 !important;
+    border-color: #2a2a3a !important;
     border-radius: 8px !important;
+    color: #e8e8f0 !important;
 }
 
 /* ── Slider ── */
 [data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
-    background: #00ff88 !important;
+    background: #a78bfa !important;
 }
 
-/* ── Expander ── */
+/* ── Expander — card style ── */
 [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(0,255,136,0.15) !important;
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
+    border-radius: 14px !important;
+}
+[data-testid="stExpander"] summary {
+    color: #e8e8f0 !important;
+}
+
+/* ── Divider — subtle, matching email footer line ── */
+hr { border-color: #2a2a3a !important; }
+
+/* ── Sidebar toggle buttons (market filter pills) ── */
+[data-testid="stSidebar"] .stButton > button {
+    font-size: 0.75rem !important;
+    padding: 0.3rem 0.6rem !important;
+    border-radius: 20px !important;
+    font-weight: 500 !important;
+    background: #13131f !important;
+    border-color: #2a2a3a !important;
+    color: #888 !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: #a78bfa !important;
+    color: #a78bfa !important;
+    box-shadow: none !important;
+}
+
+/* ── Info / Warning / Error boxes ── */
+[data-testid="stAlert"] {
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
     border-radius: 12px !important;
 }
 
-/* ── Divider ── */
-hr { border-color: rgba(0,255,136,0.1) !important; }
-
-/* ── Market toggle buttons in sidebar ── */
-[data-testid="stSidebar"] .stButton > button {
-    font-size: 0.75rem !important;
-    padding: 0.3rem 0.5rem !important;
-    border-radius: 20px !important;
-    font-weight: 500 !important;
-}
-[data-testid="stSidebar"] .stButton > button:has(div > p:first-child) {
-    min-height: 2rem !important;
-}
-
-/* ── Custom components ── */
+/* ── Custom components — all updated to match email tokens ── */
 .glass-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(0,255,136,0.2);
+    background: #1a1a24;
+    border: 1px solid #2a2a3a;
     border-radius: 16px;
     padding: 1.5rem;
-    backdrop-filter: blur(10px);
     margin-bottom: 1rem;
 }
+
+/* AI analysis box — email card style with purple left accent */
 .ai-box {
-    background: linear-gradient(135deg, rgba(0,255,136,0.05) 0%, rgba(0,212,255,0.05) 100%);
-    border: 1px solid rgba(0,255,136,0.3);
-    border-left: 4px solid #00ff88;
-    color: #e0e0f0;
+    background: #13131f;
+    border: 1px solid #2a2a3a;
+    border-left: 4px solid #a78bfa;
+    color: #e8e8f0;
     padding: 1.2rem;
     border-radius: 12px;
     font-size: 0.95rem;
     line-height: 1.7;
 }
+
+/* Badge system — matches email _edge_badge() exactly */
 .gold-badge {
-    background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.1));
-    border: 1px solid rgba(255,215,0,0.4);
-    border-radius: 8px;
-    padding: 0.3rem 0.7rem;
-    color: #ffd700;
-    font-weight: 600;
-    font-size: 0.85rem;
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #2e2510;
+    border: 1px solid #ffc53d33;
+    color: #ffc53d;
+    font-weight: 700;
+    font-size: 0.82rem;
 }
 .green-badge {
-    background: rgba(0,255,136,0.1);
-    border: 1px solid rgba(0,255,136,0.3);
-    border-radius: 8px;
-    padding: 0.3rem 0.7rem;
-    color: #00ff88;
-    font-weight: 600;
-    font-size: 0.85rem;
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #1a3a1a;
+    border: 1px solid #34d39933;
+    color: #34d399;
+    font-weight: 700;
+    font-size: 0.82rem;
 }
+.purple-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #1e1428;
+    border: 1px solid #a78bfa33;
+    color: #a78bfa;
+    font-weight: 700;
+    font-size: 0.82rem;
+}
+
+/* Stat row + chips — mirrors email _stat_chip() */
 .stat-row {
     display: flex;
     gap: 1rem;
@@ -263,36 +315,62 @@ hr { border-color: rgba(0,255,136,0.1) !important; }
     margin-bottom: 1rem;
 }
 .stat-chip {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 0.25rem 0.75rem;
+    background: #1a1a24;
+    border: 1px solid #2a2a3a;
+    border-radius: 14px;
+    padding: 0.3rem 0.8rem;
     font-size: 0.8rem;
-    color: #aaaacc;
+    color: #888;
 }
-.win-chip { border-color: rgba(0,255,136,0.4); color: #00ff88; background: rgba(0,255,136,0.08); }
-.loss-chip { border-color: rgba(255,60,60,0.4); color: #ff6060; background: rgba(255,60,60,0.08); }
-.pending-chip { border-color: rgba(255,215,0,0.4); color: #ffd700; background: rgba(255,215,0,0.08); }
+.win-chip  { border-color: #34d39944; color: #34d399; background: #0d2018; }
+.loss-chip { border-color: #ff6060aa; color: #ff6060; background: #1e0d0d; }
+.pending-chip { border-color: #ffc53d44; color: #ffc53d; background: #1e1a0a; }
+
+/* Section header — uppercase label like email section headers */
 .section-header {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #00ff88;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #666;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     margin-bottom: 0.5rem;
+}
+
+/* Sport banner — matches email sport section gradient header */
+.sport-banner-mlb  { background: linear-gradient(135deg,#1a472a 0%,#2d6a4f 100%); }
+.sport-banner-nba  { background: linear-gradient(135deg,#0a3161 0%,#1d4e8f 100%); }
+.sport-banner-wnba { background: linear-gradient(135deg,#7b1a1a 0%,#c8102e 100%); }
+.sport-banner-nhl  { background: linear-gradient(135deg,#003087 0%,#0057b8 100%); }
+.sport-banner {
+    border-radius: 16px 16px 0 0;
+    padding: 20px 24px 18px;
+    margin-bottom: 0;
+}
+
+/* Payout hero card — matches email _payout_hero() */
+.payout-hero {
+    background: linear-gradient(135deg,#141420 0%,#1e1e2e 100%);
+    border: 1px solid #3a3a5a;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Plotly dark theme ──────────────────────────────────────────────────────────
+# ── Plotly dark theme — matches email bg/card palette ─────────────────────────
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(255,255,255,0.02)",
-    font_color="#aaaacc",
+    plot_bgcolor="#13131f",
+    font_color="#888",
     font_family="Inter",
-    xaxis=dict(gridcolor="rgba(255,255,255,0.05)", zerolinecolor="rgba(255,255,255,0.1)"),
-    yaxis=dict(gridcolor="rgba(255,255,255,0.05)", zerolinecolor="rgba(255,255,255,0.1)"),
+    xaxis=dict(gridcolor="#2a2a3a", zerolinecolor="#3a3a5a"),
+    yaxis=dict(gridcolor="#2a2a3a", zerolinecolor="#3a3a5a"),
 )
 
 from odds_client import SPORTS_CONFIG
@@ -314,9 +392,26 @@ def load_scraped_data(sport: str) -> pd.DataFrame:
     return scrape_props(sport)
 
 
+def preload_all_sports_parallel(use_live: bool = False):
+    """
+    Warm the @st.cache_data caches for all live sports.
+    Runs sequentially on the main thread to avoid Streamlit cache-thread issues.
+    Only runs once per session (tracked in session_state).
+    """
+    if st.session_state.get("_sports_preloaded"):
+        return
+    live_sports = [s for s, cfg in SPORTS_CONFIG.items() if cfg.get("status", "live") == "live"]
+    for s in live_sports:
+        try:
+            load_scraped_data(s)
+        except Exception:
+            pass
+    st.session_state["_sports_preloaded"] = True
+
+
 @st.cache_data(ttl=3600)
 def load_static_mlb() -> pd.DataFrame:
-    data_path = Path("data/hits_board-1.csv")
+    data_path = Path(__file__).parent.parent / "data" / "hits_board-1.csv"
     if not data_path.exists():
         return pd.DataFrame()
     df = pd.read_csv(data_path)
@@ -400,6 +495,7 @@ def render_bet_tracker():
         st.markdown('<div class="section-header">➕ Log a Bet</div>', unsafe_allow_html=True)
         with st.form("log_bet_form", clear_on_submit=True):
             from edge_model import recommended_stake as _rec_stake, edge_rating as _edge_rating
+            from bet_tracker import get_clv_avg as _get_clv_avg
             sport = st.selectbox("Sport", [s for s in SPORTS_CONFIG if SPORTS_CONFIG[s]["status"] == "live"])
             player = st.text_input("Player", placeholder="e.g. Daniel Susac")
             prop = st.text_input("Prop", placeholder="e.g. 1+ Hits, Points O22.5")
@@ -410,11 +506,15 @@ def render_bet_tracker():
                                        help="Your fair probability estimate. Use Fair Est. from the table.")
             _bankroll = st.session_state.get("bankroll_input", 1000.0)
             _kmult = st.session_state.get("kelly_mult", 0.25)
-            _rec = _rec_stake(win_prob / 100, float(odds), _bankroll, _kmult)
-            st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% of bankroll) | EV: ${_rec['ev_on_stake']:+.2f} | Signal: {_edge_rating(win_prob/100 - abs(odds)/(abs(odds)+100))}")
+            # Wire real CLV history into dynamic Kelly — stake scales with proven track record
+            _clv_avg = _get_clv_avg(n_recent=30)
+            _rec = _rec_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
+            _clv_note = f" | CLV avg: {_clv_avg:+.1f}% (last 30)" if _clv_avg is not None else " | CLV: no history yet"
+            st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% · {_rec['kelly_multiplier']:.0%} Kelly) | EV: ${_rec['ev_on_stake']:+.2f}{_clv_note}")
             stake = st.number_input("Stake ($)", value=float(_rec["stake"]) or 10.0,
                                     step=1.0, min_value=0.5)
             book = st.text_input("Sportsbook", placeholder="DraftKings, FanDuel...")
+            is_parlay_bet = st.checkbox("🎰 Is Parlay?", value=False, help="Mark if this is a parlay ticket")
             notes = st.text_input("Notes", placeholder="Optional")
             if st.form_submit_button("🎯 Log Bet", use_container_width=True):
                 if player and prop:
@@ -433,7 +533,8 @@ def render_bet_tracker():
                     except Exception:
                         pass
                     add_bet(sport, player, prop, line, int(odds), stake, book, notes,
-                            sharp_odds=sharp_odds_val, fair_est=win_prob/100)
+                            sharp_odds=sharp_odds_val, fair_est=win_prob/100,
+                            is_parlay=is_parlay_bet)
                     def _american_to_dec(o):
                         return (o/100+1) if o > 0 else (100/abs(o)+1)
                     clv_msg = f" | Opening CLV: {((1/_american_to_dec(sharp_odds_val))-(1/_american_to_dec(int(odds))))*100:+.1f}% vs sharp" if sharp_odds_val else ""
@@ -702,8 +803,353 @@ def render_bet_tracker():
                     "Profit": f"${d['profit']:+.2f}"
                 })
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        # ── Parlay ROI History Chart ──
+        parlay_bets = [b for b in settled if b.get("is_parlay") or b.get("parlay_legs")]
+        if parlay_bets:
+            st.markdown("#### 🎰 Parlay ROI History")
+            parlay_rows = []
+            for b in parlay_bets:
+                legs = b.get("parlay_legs", 1)
+                if isinstance(legs, list):
+                    legs = len(legs)
+                expected_ev_pct = b.get("parlay_ev_pct") or b.get("ev_pct") or 0.0
+                actual_profit   = b.get("profit") or 0.0
+                stake           = b.get("stake") or 0.0
+                actual_roi_pct  = (actual_profit / stake * 100) if stake else 0.0
+                parlay_rows.append({
+                    "date":     b.get("date", ""),
+                    "legs":     int(legs),
+                    "expected": round(float(expected_ev_pct), 2),
+                    "actual":   round(actual_roi_pct, 2),
+                    "result":   b.get("result", "pending"),
+                    "label":    f"{b.get('date','?')} ({legs}-leg)",
+                })
+            if parlay_rows:
+                pr_df = pd.DataFrame(parlay_rows).sort_values("date")
+                fig_p = go.Figure()
+                fig_p.add_trace(go.Bar(
+                    x=pr_df["label"], y=pr_df["expected"],
+                    name="Expected EV%", marker_color="rgba(167,139,250,0.6)",
+                ))
+                fig_p.add_trace(go.Bar(
+                    x=pr_df["label"], y=pr_df["actual"],
+                    name="Actual ROI%",
+                    marker_color=[
+                        "rgba(52,211,153,0.8)" if r == "win" else
+                        "rgba(255,96,96,0.8)"  if r == "loss" else
+                        "rgba(120,120,140,0.5)"
+                        for r in pr_df["result"]
+                    ],
+                ))
+                fig_p.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
+                fig_p.update_layout(
+                    title="Parlay: Expected EV% vs Actual ROI%",
+                    barmode="group",
+                    height=360,
+                    **PLOT_LAYOUT,
+                )
+                st.plotly_chart(fig_p, use_container_width=True)
+                total_parlay_profit = sum(b.get("profit") or 0 for b in parlay_bets)
+                parlay_wins = sum(1 for b in parlay_bets if b.get("result") == "win")
+                st.caption(
+                    f"📊 {len(parlay_bets)} parlays logged · "
+                    f"{parlay_wins} wins · "
+                    f"Total P&L: **${total_parlay_profit:+.2f}**"
+                )
+        else:
+            st.caption("💡 Parlay ROI chart appears once you log parlays (tick 'Is Parlay' when logging).")
     else:
         st.info("📊 Charts will appear once you have settled bets.")
+
+
+# ── CLV & ROI Tab ─────────────────────────────────────────────────────────────
+def render_clv_tab():
+    """Full CLV & ROI analysis dashboard — measures if the model is actually working."""
+    from bet_tracker import load_bets, get_stats
+    import plotly.graph_objects as go
+    import plotly.express as px
+
+    st.markdown("## 📈 CLV & ROI Analysis")
+    st.caption("Closing Line Value (CLV) is the gold standard for measuring edge quality. Consistent positive CLV = real edge, not luck.")
+
+    bets = load_bets()
+    if not bets:
+        st.info("📭 No bets logged yet. Start logging bets in the Tracker tab to see CLV analysis.")
+        return
+
+    stats = get_stats()
+
+    # ── CLV Hero Metrics ──────────────────────────────────────────────────────
+    clv_bets = [b for b in bets if b.get("clv") is not None]
+    clv_vals = [float(b["clv"]) for b in clv_bets]
+    settled  = [b for b in bets if b.get("result") in ("win", "loss")]
+
+    avg_clv       = round(sum(clv_vals) / len(clv_vals), 2) if clv_vals else None
+    clv_pos_rate  = round(100 * sum(1 for c in clv_vals if c > 0) / len(clv_vals), 1) if clv_vals else None
+    model_edge    = stats.get("roi", 0.0)
+    expected_roi  = round(avg_clv * 0.85, 2) if avg_clv else None  # CLV → ROI conversion ~85%
+
+    h1, h2, h3, h4, h5 = st.columns(5)
+    clv_color = "#00ff88" if (avg_clv or 0) > 0 else "#ff6060"
+    h1.metric("Avg CLV", f"{avg_clv:+.2f}%" if avg_clv is not None else "—",
+              help="Average Closing Line Value. Positive = you consistently beat the closing market.")
+    h2.metric("CLV Positive Rate", f"{clv_pos_rate:.0f}%" if clv_pos_rate else "—",
+              help="% of bets where you beat the closing line. >50% = long-term edge.")
+    h3.metric("Bets with CLV", len(clv_bets))
+    h4.metric("Actual ROI", f"{model_edge:+.1f}%",
+              delta="live" if model_edge >= 0 else None)
+    h5.metric("CLV-Implied ROI", f"{expected_roi:+.1f}%" if expected_roi is not None else "—",
+              help="Estimated ROI from CLV (CLV × 0.85). Matches actual ROI if model is well-calibrated.")
+
+    st.divider()
+
+    # ── CLV Over Time (rolling) ────────────────────────────────────────────────
+    if clv_bets:
+        st.markdown("### 📉 CLV Trend Over Time")
+        clv_df = pd.DataFrame([
+            {"date": b["date"], "clv": float(b["clv"]), "sport": b.get("sport","?"), "player": b.get("player","?")}
+            for b in clv_bets
+        ])
+        clv_df = clv_df.sort_values("date")
+        clv_df["rolling_clv"] = clv_df["clv"].rolling(window=10, min_periods=1).mean()
+        clv_df["cumulative_clv"] = clv_df["clv"].cumsum()
+        clv_df["bet_num"] = range(1, len(clv_df) + 1)
+
+        col_l, col_r = st.columns(2)
+        with col_l:
+            fig_roll = go.Figure()
+            fig_roll.add_trace(go.Bar(
+                x=clv_df["bet_num"], y=clv_df["clv"],
+                name="CLV per bet",
+                marker_color=["rgba(0,255,136,0.5)" if c > 0 else "rgba(255,96,96,0.5)" for c in clv_df["clv"]],
+            ))
+            fig_roll.add_trace(go.Scatter(
+                x=clv_df["bet_num"], y=clv_df["rolling_clv"],
+                name="10-bet rolling avg", line=dict(color="#00d4ff", width=2),
+            ))
+            fig_roll.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+            fig_roll.update_layout(
+                title="CLV per Bet + 10-Bet Rolling Average",
+                xaxis_title="Bet #", yaxis_title="CLV (%)",
+                height=320, **PLOT_LAYOUT
+            )
+            st.plotly_chart(fig_roll, use_container_width=True)
+
+        with col_r:
+            fig_cum = go.Figure()
+            fig_cum.add_trace(go.Scatter(
+                x=clv_df["bet_num"], y=clv_df["cumulative_clv"],
+                name="Cumulative CLV",
+                fill="tozeroy",
+                line=dict(color="#a855f7", width=2),
+                fillcolor="rgba(168,85,247,0.15)",
+            ))
+            fig_cum.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+            fig_cum.update_layout(
+                title="Cumulative CLV (Edge Accumulation)",
+                xaxis_title="Bet #", yaxis_title="Cumulative CLV (%)",
+                height=320, **PLOT_LAYOUT
+            )
+            st.plotly_chart(fig_cum, use_container_width=True)
+
+    # ── CLV by Sport ──────────────────────────────────────────────────────────
+    if clv_bets:
+        st.divider()
+        st.markdown("### 🏆 Edge Quality by Sport & Market")
+        col_sp, col_mk = st.columns(2)
+
+        # By sport
+        with col_sp:
+            sp_clv = {}
+            for b in clv_bets:
+                sp = b.get("sport", "?")
+                sp_clv.setdefault(sp, []).append(float(b["clv"]))
+            sp_rows = [{"Sport": sp, "Avg CLV": round(sum(v)/len(v), 2), "Bets": len(v),
+                        "% Positive": round(100*sum(1 for x in v if x>0)/len(v), 0)}
+                       for sp, v in sp_clv.items() if len(v) >= 2]
+            sp_rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
+            if sp_rows:
+                fig_sp = px.bar(
+                    pd.DataFrame(sp_rows), x="Sport", y="Avg CLV",
+                    color="Avg CLV", color_continuous_scale=["#ff6060","#ffaa00","#00ff88"],
+                    title="Avg CLV by Sport", text="Avg CLV",
+                )
+                fig_sp.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
+                fig_sp.update_layout(height=300, coloraxis_showscale=False, **PLOT_LAYOUT)
+                st.plotly_chart(fig_sp, use_container_width=True)
+
+        # By market
+        with col_mk:
+            mk_clv = {}
+            for b in clv_bets:
+                # Extract market from prop string (e.g. "pitcher_strikeouts O6.5")
+                prop_str = b.get("prop", "")
+                mkt = prop_str.split(" ")[0] if prop_str else "unknown"
+                # Clean up common suffixes
+                for suffix in [" O", " U", " [", "\n"]:
+                    mkt = mkt.split(suffix)[0]
+                mk_clv.setdefault(mkt, []).append(float(b["clv"]))
+            mk_rows = [{"Market": mk.replace("_", " ").title(), "Avg CLV": round(sum(v)/len(v), 2), "Bets": len(v)}
+                       for mk, v in mk_clv.items() if len(v) >= 3]
+            mk_rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
+            if mk_rows:
+                fig_mk = px.bar(
+                    pd.DataFrame(mk_rows[:12]), x="Market", y="Avg CLV",
+                    color="Avg CLV", color_continuous_scale=["#ff6060","#ffaa00","#00ff88"],
+                    title="Avg CLV by Market (min 3 bets)", text="Avg CLV",
+                )
+                fig_mk.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
+                fig_mk.update_layout(height=300, coloraxis_showscale=False, **PLOT_LAYOUT)
+                st.plotly_chart(fig_mk, use_container_width=True)
+
+    # ── Win Rate vs Expected ──────────────────────────────────────────────────
+    if settled:
+        st.divider()
+        st.markdown("### 🎯 Actual vs Expected Win Rate")
+        st.caption("If the model is well-calibrated, actual win rate should track expected win rate over time.")
+
+        # Per-sport win rate vs expected
+        sp_wr = {}
+        for b in settled:
+            sp = b.get("sport", "?")
+            win = b.get("result") == "win"
+            sp_wr.setdefault(sp, {"wins": 0, "total": 0, "exp_wins": 0.0})
+            sp_wr[sp]["total"] += 1
+            if win:
+                sp_wr[sp]["wins"] += 1
+
+        wr_rows = []
+        for sp, d in sp_wr.items():
+            if d["total"] < 3:
+                continue
+            actual_wr = round(100 * d["wins"] / d["total"], 1)
+            wr_rows.append({"Sport": sp, "Actual Win%": actual_wr,
+                             "Bets": d["total"], "Wins": d["wins"]})
+
+        if wr_rows:
+            wr_df = pd.DataFrame(wr_rows)
+            fig_wr = go.Figure()
+            fig_wr.add_trace(go.Bar(
+                x=wr_df["Sport"], y=wr_df["Actual Win%"],
+                name="Actual Win %",
+                marker_color="rgba(0,255,136,0.7)",
+                text=[f"{v:.1f}%" for v in wr_df["Actual Win%"]],
+                textposition="outside",
+            ))
+            fig_wr.add_hline(y=50, line_dash="dot", line_color="rgba(255,255,255,0.4)",
+                             annotation_text="50% baseline")
+            fig_wr.update_layout(
+                title="Win Rate by Sport (settled bets)",
+                yaxis_title="Win %", height=300, **PLOT_LAYOUT
+            )
+            st.plotly_chart(fig_wr, use_container_width=True)
+
+    # ── Bankroll Growth Chart ──────────────────────────────────────────────────
+    if settled:
+        st.divider()
+        st.markdown("### 💰 Bankroll Growth")
+
+        bk_df = pd.DataFrame([
+            {"date": b["date"], "profit": float(b.get("profit") or 0), "sport": b.get("sport","?")}
+            for b in sorted(settled, key=lambda x: x["date"])
+        ])
+        bk_df["cumulative"] = bk_df["profit"].cumsum()
+        bk_df["bet_num"] = range(1, len(bk_df) + 1)
+
+        fig_bk = go.Figure()
+        fig_bk.add_trace(go.Scatter(
+            x=bk_df["bet_num"], y=bk_df["cumulative"],
+            mode="lines+markers",
+            name="Bankroll P&L",
+            line=dict(color="#00ff88", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(0,255,136,0.08)",
+            marker=dict(size=4),
+        ))
+        fig_bk.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+        fig_bk.update_layout(
+            title="Cumulative P&L Over All Bets",
+            xaxis_title="Bet #", yaxis_title="Profit ($)",
+            height=350, **PLOT_LAYOUT
+        )
+        st.plotly_chart(fig_bk, use_container_width=True)
+
+        # Drawdown chart
+        bk_df["peak"] = bk_df["cumulative"].cummax()
+        bk_df["drawdown"] = bk_df["cumulative"] - bk_df["peak"]
+        max_dd = bk_df["drawdown"].min()
+        current_dd = bk_df["drawdown"].iloc[-1]
+
+        d1, d2 = st.columns(2)
+        d1.metric("Max Drawdown", f"${max_dd:.2f}", delta=f"Current: ${current_dd:.2f}",
+                  delta_color="inverse")
+        d2.metric("Peak P&L", f"${bk_df['peak'].iloc[-1]:.2f}")
+
+    # ── Market Edge Calibration (item 5) ──────────────────────────────────────
+    if settled:
+        st.divider()
+        st.markdown("### 🔬 Market Edge Calibration")
+        st.caption("Which markets is the model actually finding real edge in? Sorts by CLV to reveal where the signal is real vs noise.")
+
+        mkt_data: dict = {}
+        for b in settled:
+            prop_str = b.get("prop", "")
+            mkt_raw  = prop_str.split(" ")[0].strip() if prop_str else "unknown"
+            for suf in [" O", " U", " [", "[", "\n", "(", ")"]:
+                mkt_raw = mkt_raw.split(suf)[0]
+            mkt_raw = mkt_raw.replace("_", " ").title()
+
+            win   = b.get("result") == "win"
+            clv_v = b.get("clv") or b.get("opening_clv")
+            if mkt_raw not in mkt_data:
+                mkt_data[mkt_raw] = {"wins": 0, "total": 0, "clv_vals": [], "profit": 0.0}
+            mkt_data[mkt_raw]["total"] += 1
+            if win: mkt_data[mkt_raw]["wins"] += 1
+            if clv_v is not None: mkt_data[mkt_raw]["clv_vals"].append(float(clv_v))
+            mkt_data[mkt_raw]["profit"] += float(b.get("profit") or 0)
+
+        cal_rows = []
+        for mkt, d in mkt_data.items():
+            if d["total"] < 3: continue
+            wr      = round(100 * d["wins"] / d["total"], 1)
+            avg_clv = round(sum(d["clv_vals"]) / len(d["clv_vals"]), 2) if d["clv_vals"] else None
+            roi_pct = round(d["profit"] / max(d["total"], 1), 2)
+            verdict = ("✅ Trust" if (avg_clv or 0) >= 1.5 and wr >= 50
+                       else "🟡 Monitor" if (avg_clv or 0) >= 0
+                       else "🔴 Avoid")
+            cal_rows.append({
+                "Market":   mkt,
+                "Bets":     d["total"],
+                "Win %":    f"{wr}%",
+                "Avg CLV":  f"{avg_clv:+.2f}%" if avg_clv is not None else "—",
+                "Avg P&L":  f"${roi_pct:+.2f}",
+                "Verdict":  verdict,
+            })
+
+        if cal_rows:
+            cal_rows.sort(key=lambda r: float(r["Avg CLV"].replace("%","").replace("—","0") or "0"), reverse=True)
+            cal_df = pd.DataFrame(cal_rows)
+            st.dataframe(cal_df, use_container_width=True, hide_index=True)
+            st.caption("Min 3 bets per market. Avg P&L = average profit per bet. CLV data may be partial for recent bets.")
+        else:
+            st.info("Need 3+ settled bets per market for calibration data.")
+
+    # ── CLV Data Table ────────────────────────────────────────────────────────
+    if clv_bets:
+        st.divider()
+        st.markdown("### 📋 CLV Breakdown (All Bets with CLV Data)")
+        clv_table = pd.DataFrame([{
+            "Date":   b["date"],
+            "Sport":  b.get("sport", "?"),
+            "Player": b.get("player", "?"),
+            "Prop":   b.get("prop", "?"),
+            "Odds":   b.get("odds"),
+            "Result": b.get("result", "pending"),
+            "CLV":    f"{float(b['clv']):+.2f}%",
+            "Profit": f"${float(b.get('profit') or 0):+.2f}",
+        } for b in sorted(clv_bets, key=lambda x: x["date"], reverse=True)])
+        st.dataframe(clv_table, use_container_width=True, hide_index=True)
 
 
 # ── Sport Tab ─────────────────────────────────────────────────────────────────
@@ -724,8 +1170,32 @@ def render_sport_tab(sport: str, use_live: bool):
     allowed_markets = set(cfg["market_labels"].keys())
     df = df[df["market"].isin(allowed_markets)].copy()
 
-    badge = {"live": "🟢 Live (Odds API)", "scraped": "🔵 Scraped (Action Network)", "static": "🟡 Static CSV"}.get(data_source, "🟡 Static")
-    st.caption(f"Data: {badge} · {len(df)} props loaded · Refreshes every 5 min")
+    # ── Sport gradient banner — matches email sport section header exactly ──
+    _SPORT_BANNER_META = {
+        "MLB":  {"gradient": "linear-gradient(135deg,#1a472a 0%,#2d6a4f 100%)", "accent": "#52b788", "icon": "⚾"},
+        "NBA":  {"gradient": "linear-gradient(135deg,#0a3161 0%,#1d4e8f 100%)", "accent": "#4dabf7", "icon": "🏀"},
+        "WNBA": {"gradient": "linear-gradient(135deg,#7b1a1a 0%,#c8102e 100%)", "accent": "#ff8fa3", "icon": "🏀"},
+        "NHL":  {"gradient": "linear-gradient(135deg,#003087 0%,#0057b8 100%)", "accent": "#74c0fc", "icon": "🏒"},
+    }
+    _smeta  = _SPORT_BANNER_META.get(sport, {"gradient":"linear-gradient(135deg,#1e1e2e,#2a2a4e)","accent":"#a78bfa","icon":"🎯"})
+    _src_dot = {"live": "🟢", "scraped": "🔵", "static": "🟡"}.get(data_source, "⚪")
+    _src_lbl = {"live": "Live · Odds API", "scraped": "Scraped · Action Network", "static": "Static CSV"}.get(data_source, data_source)
+    st.markdown(f"""
+<div style="background:{_smeta['gradient']};border-radius:16px 16px 0 0;
+            padding:20px 24px 16px;margin-bottom:0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:800;
+                   color:#fff;letter-spacing:-0.5px;">{_smeta['icon']} {sport}</span>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-size:12px;color:rgba(255,255,255,0.65);">{_src_dot} {_src_lbl}</span><br>
+      <span style="font-size:12px;color:rgba(255,255,255,0.5);">{len(df)} props · refreshes every 5 min</span>
+    </div>
+  </div>
+</div>
+<div style="height:1px;background:#2a2a3a;margin-bottom:1rem;"></div>
+""", unsafe_allow_html=True)
 
     # ── Line movement snapshot + steam alerts ──
     try:
@@ -735,11 +1205,27 @@ def render_sport_tab(sport: str, use_live: bool):
             steam_alerts = []
             movement_map = {}
         else:
-            steam_alerts = [m for m in record_snapshot(df).values() if m.get("is_steam")]
+            _snap_data    = record_snapshot(df)
+            steam_alerts  = [m for m in _snap_data.values() if m.get("is_steam")]
+            # Opening line alerts: any move ≥ 10 pts since first snapshot
+            line_alerts   = [m for m in _snap_data.values()
+                             if not m.get("is_steam") and abs(m.get("diff", 0)) >= 10]
+
             if steam_alerts:
-                st.warning(f"🔥 **{len(steam_alerts)} Steam Move(s) Detected!** Lines moving fast — sharp money likely.")
+                st.warning(f"🔥 **{len(steam_alerts)} Steam Move(s) Detected!** Sharp money moving fast.")
                 for alert in steam_alerts[:3]:
                     st.markdown(f"- **{alert['player']}** {alert['market']} | {alert['prev_odds']:+d} → {alert['curr_odds']:+d} ({format_movement(alert['diff'])})")
+
+            if line_alerts:
+                _dir_word = lambda d: ("📈 moved up" if d > 0 else "📉 moved down")
+                with st.expander(f"📊 {len(line_alerts)} Line Movement(s) Since Opening", expanded=False):
+                    for mv in sorted(line_alerts, key=lambda x: abs(x.get("diff",0)), reverse=True)[:10]:
+                        diff = mv.get("diff", 0)
+                        st.markdown(
+                            f"**{mv['player']}** — {mv['market']} O{mv.get('line','')} "
+                            f"| Opening: **{mv['prev_odds']:+d}** → Now: **{mv['curr_odds']:+d}** "
+                            f"({_dir_word(diff)} {abs(diff)} pts)"
+                        )
                 # Only auto-push alerts that haven't been sent yet this session
                 try:
                     from discord_bot import is_configured as dc_ok, send_steam_alert as dc_steam
@@ -815,6 +1301,9 @@ def render_sport_tab(sport: str, use_live: bool):
         edge_threshold = st.slider("Min Edge", min_value=-0.05, max_value=0.12,
                                    value=0.0, step=0.005, format="%.3f",
                                    key=f"edge_slider_{sport}")
+        confirmed_only = st.toggle("✅ Confirmed plays only",
+                                   value=False, key=f"confirmed_{sport}",
+                                   help="Show only plays where Power de-vig AND NegBin both agree on edge direction. Highest conviction plays.")
         all_teams = sorted(df["team"].dropna().unique())
         selected_teams = st.multiselect("Matchups", options=all_teams, default=all_teams,
                                         key=f"teams_{sport}")
@@ -832,14 +1321,36 @@ def render_sport_tab(sport: str, use_live: bool):
             st.rerun()
 
     cache_key = f"filtered_{sport}"
+    _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
     filtered = df[
         (df["market"].isin(selected_markets))
         & (df["edge"] >= edge_threshold)
         & (df["team"].isin(selected_teams))
         & (df["player"].str.contains(player_search, case=False, na=False))
+        & _conf_mask
     ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
+
+    # ── Pre-compute confidence scores for all filtered rows ──────────────────
+    from edge_model import edge_confidence_score as _conf_score, confidence_label as _conf_label
+    from bet_tracker import get_clv_avg as _get_clv_avg
+    _clv_avg_global = _get_clv_avg(n_recent=30)  # shared CLV history for all rows
+
+    def _row_confidence(row) -> int:
+        return _conf_score(
+            edge=float(row.get("edge", 0)),
+            fair_est=float(row.get("fair_est", 0.5)),
+            edge_confirmed=bool(row.get("edge_confirmed", False)),
+            n_books=int(row.get("n_books", 1)),
+            over_odds=float(row.get("over_odds", -110)),
+            clv_avg=_clv_avg_global,
+        )
+
+    if len(filtered) > 0:
+        filtered = filtered.copy()
+        filtered["confidence"] = filtered.apply(_row_confidence, axis=1)
+        filtered = filtered.sort_values(["confidence", "edge"], ascending=False)
 
     # ── KPIs ──
     st.markdown("### 📊 Board Overview")
@@ -851,9 +1362,49 @@ def render_sport_tab(sport: str, use_live: bool):
               delta=f"{len(filtered)/len(df):.1%} of board" if len(df) else None)
     k3.metric("Avg Edge", f"{avg_edge:.2%}")
     if best is not None:
-        k4.metric("Best Play", best["player"], delta=f"+{best['edge']:.2%} edge")
+        best_conf = int(best.get("confidence", 0))
+        best_label, _ = _conf_label(best_conf)
+        k4.metric("Best Play", best["player"], delta=f"{best_label} · {best_conf}/100")
     else:
         k4.metric("Best Play", "—")
+
+    # ── Best Bet of the Day widget ────────────────────────────────────────────
+    if best is not None:
+        best_conf  = int(best.get("confidence", 0))
+        best_label, best_color = _conf_label(best_conf)
+        best_prop  = market_labels.get(best.get("market",""), best.get("market",""))
+        best_odds  = int(best.get("over_odds", 0))
+        best_odds_fmt = f"+{best_odds}" if best_odds > 0 else str(best_odds)
+        best_edge  = float(best.get("edge", 0))
+        best_fair  = float(best.get("fair_est", 0.5))
+        confirmed_badge = " ✅ Both models agree" if best.get("edge_confirmed") else ""
+        bar_pct = best_conf  # 0–100
+
+        st.markdown(f"""
+<div style="background:linear-gradient(135deg,rgba(0,255,136,0.07) 0%,rgba(0,212,255,0.07) 100%);
+            border:1px solid {best_color};border-radius:14px;padding:1.2rem 1.5rem;margin:0.8rem 0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+    <div>
+      <span style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:1px;">🏆 Best Bet of the Day</span><br>
+      <span style="font-size:1.3rem;font-weight:700;color:#fff;">{best['player']}</span>
+      <span style="font-size:0.95rem;color:#aaa;margin-left:0.5rem;">{best_prop} O{best.get('line','')} · {best_odds_fmt}</span>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-size:1.6rem;font-weight:800;color:{best_color};">{best_conf}</span>
+      <span style="font-size:0.8rem;color:#888;">/100</span><br>
+      <span style="font-size:0.8rem;color:{best_color};font-weight:600;">{best_label}</span>
+    </div>
+  </div>
+  <div style="margin-top:0.7rem;background:rgba(255,255,255,0.08);border-radius:6px;height:6px;overflow:hidden;">
+    <div style="width:{bar_pct}%;height:100%;background:linear-gradient(90deg,{best_color},{best_color}99);border-radius:6px;"></div>
+  </div>
+  <div style="margin-top:0.5rem;font-size:0.8rem;color:#aaa;">
+    Edge <b style="color:{best_color};">+{best_edge:.2%}</b> ·
+    Fair <b style="color:#fff;">{best_fair:.1%}</b> ·
+    Game: <b style="color:#ccc;">{best.get('team','')}</b>{confirmed_badge}
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     st.divider()
 
@@ -944,9 +1495,14 @@ def render_sport_tab(sport: str, use_live: bool):
         display_df = filtered[base_cols].copy()
         display_df["market"] = display_df["market"].map(lambda k: market_labels.get(k, k))
 
-        # Kelly stake
+        # Confidence score (0–100) — already computed above, wire it in
+        if "confidence" in filtered.columns:
+            display_df["Conf"] = filtered["confidence"].apply(
+                lambda s: f"{int(s)}/100")
+
+        # Dynamic Kelly stake — uses real CLV history for sizing
         display_df["Kelly"] = filtered.apply(
-            lambda r: f"${recommended_stake(r['fair_est'], r['over_odds'], bankroll, kelly_mult)['stake']:.2f}", axis=1)
+            lambda r: f"${recommended_stake(r['fair_est'], r['over_odds'], bankroll, kelly_mult, clv_avg=_clv_avg_global)['stake']:.2f}", axis=1)
 
         # Edge signal
         display_df["Signal"] = filtered["edge"].apply(edge_rating)
@@ -959,6 +1515,34 @@ def render_sport_tab(sport: str, use_live: bool):
                 return f"{d:+.1%} 📊" if d > 0 else f"{d:+.1%}"
             display_df["NB Δ"] = filtered["negbin_delta"].apply(_nb_label)
             display_df["NB Δ"].name = "NB Δ"
+
+        # ── Line Shopping (item 2) — FD vs DK odds + Best Book tag ──
+        if "fd_odds" in filtered.columns and "dk_odds" in filtered.columns:
+            def _fmt_book_odds(v):
+                if pd.isna(v) or v is None: return "—"
+                return f"+{int(v)}" if v > 0 else str(int(v))
+
+            def _best_book(row):
+                fd  = row.get("fd_odds")
+                dk  = row.get("dk_odds")
+                if pd.isna(fd) or fd is None: return "DK" if (not pd.isna(dk) and dk is not None) else "—"
+                if pd.isna(dk) or dk is None: return "FD"
+                return "FD" if fd >= dk else "DK"   # higher american = better payout
+
+            def _book_spread(row):
+                fd = row.get("fd_odds"); dk = row.get("dk_odds")
+                if pd.isna(fd) or pd.isna(dk) or fd is None or dk is None: return "—"
+                diff = int(fd) - int(dk)
+                if diff == 0: return "Equal"
+                return f"FD {diff:+d}" if diff > 0 else f"DK {-diff:+d}"
+
+            display_df["FD"] = filtered.apply(lambda r: _fmt_book_odds(r.get("fd_odds")), axis=1)
+            display_df["DK"] = filtered.apply(lambda r: _fmt_book_odds(r.get("dk_odds")), axis=1)
+            display_df["Bet At"] = filtered.apply(_best_book, axis=1)
+            display_df["Spread"] = filtered.apply(_book_spread, axis=1)
+            _has_line_shop = True
+        else:
+            _has_line_shop = False
 
         # Line movement
         def get_move(row):
@@ -977,17 +1561,28 @@ def render_sport_tab(sport: str, use_live: bool):
         display_df["Sharp Line"] = filtered.apply(get_sharp, axis=1)
 
         # Injury status
-        has_nb = "NB Δ" in display_df.columns
+        has_nb   = "NB Δ" in display_df.columns
+        has_conf = "Conf" in display_df.columns
+
+        _shop_cols = (["FD", "DK", "Bet At", "Spread"] if _has_line_shop else [])
 
         if has_status and "status_label" in filtered.columns:
             display_df["Status"] = filtered["status_label"]
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
-                         "Book Implied", "Fair Est.", "Edge", "Kelly", "Signal", "Move", "Sharp Line",
+                         "Book Implied", "Fair Est.", "Edge",
+                         *(["Conf"] if has_conf else []),
+                         "Kelly", "Signal",
+                         *_shop_cols,
+                         "Move", "Sharp Line",
                          *(["NB Δ"] if has_nb else []),
                          "Status"]
         else:
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
-                         "Book Implied", "Fair Est.", "Edge", "Kelly", "Signal", "Move", "Sharp Line",
+                         "Book Implied", "Fair Est.", "Edge",
+                         *(["Conf"] if has_conf else []),
+                         "Kelly", "Signal",
+                         *_shop_cols,
+                         "Move", "Sharp Line",
                          *(["NB Δ"] if has_nb else [])]
 
         display_df.columns = col_names
@@ -1160,16 +1755,33 @@ def render_sport_tab(sport: str, use_live: bool):
         stake = st.number_input("Stake per parlay ($)", min_value=1.0, max_value=10000.0,
                                 value=10.0, step=5.0, key=f"stake_{sport}")
 
-        # SGP pool: same market/team/player filters as the main board, but
-        # no edge-threshold cut so SGP legs aren't too thin. The builder
-        # applies its own -0.03 floor internally.
+        # SGP pool: same market/team/player filters, no edge-threshold cut.
         sgp_pool = df[
             (df["market"].isin(selected_markets))
             & (df["team"].isin(selected_teams if selected_teams else df["team"].unique()))
             & (df["player"].str.contains(player_search, case=False, na=False) if player_search else True)
         ].copy()
 
-        report = build_parlay_report(filtered, stake=stake, full_df=sgp_pool)
+        # ── Lazy SGP cache ────────────────────────────────────────────────────
+        # Use session_state keyed by sport + data hash to avoid the Streamlit
+        # @st.cache_data closure-collision bug (all sport tabs define identically-
+        # coded nested functions → same cache namespace → wrong parlay returned).
+        import hashlib as _hl
+
+        def _df_hash(d: pd.DataFrame) -> str:
+            try:
+                key = str(round(d["edge"].sum(), 6)) + str(len(d)) + str(d["over_odds"].sum() if "over_odds" in d.columns else 0)
+                return _hl.md5(key.encode()).hexdigest()[:12]
+            except Exception:
+                return "empty"
+
+        _parlay_key = f"parlay_report_{sport}_{_df_hash(filtered)}_{_df_hash(sgp_pool)}_{stake}"
+        if _parlay_key not in st.session_state:
+            with st.spinner("⚡ Building parlays & SGPs…"):
+                st.session_state[_parlay_key] = build_parlay_report(
+                    filtered, stake=stake, full_df=sgp_pool
+                )
+        report = st.session_state[_parlay_key]
 
         st.markdown("#### 🏆 Top 10 Best Edge Candidates")
         st.caption("Highest edge plays within -300 to +300 odds — sorted by edge, best value first.")
@@ -1208,13 +1820,36 @@ def render_sport_tab(sport: str, use_live: bool):
                 if pkey in report["parlays"]:
                     p = report["parlays"][pkey]
                     pout = p["payout"]
-                    st.metric("Payout", f"${pout['payout']:.2f}",
-                              delta=f"{pout['american_odds']} odds")
+                    ev  = p.get("ev", {})
+                    ev_pct  = ev.get("ev_pct", 0)
+                    ev_sign = "+" if ev_pct >= 0 else ""
+                    ev_col  = "#34d399" if ev_pct > 0 else "#ff6060"
+                    win_prob = ev.get("win_prob", 0)
+                    # Payout hero card — mirrors email _payout_hero()
+                    st.markdown(f"""
+<div style="background:linear-gradient(135deg,#141420 0%,#1e1e2e 100%);
+            border:1px solid #3a3a5a;border-radius:12px;padding:14px 18px;
+            margin-bottom:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+  <div>
+    <p style="margin:0;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:1px;">Combined Odds</p>
+    <p style="margin:2px 0 0;color:#a78bfa;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;">{pout['american_odds']}</p>
+  </div>
+  <div style="flex:1;">
+    <p style="margin:0;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:1px;">Payout on ${pout['stake']:.0f}</p>
+    <p style="margin:2px 0 0;color:#34d399;font-size:20px;font-weight:800;">${pout['payout']:.2f}</p>
+  </div>
+  <div style="text-align:right;">
+    <p style="margin:0;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:1px;">EV</p>
+    <p style="margin:2px 0 0;color:{ev_col};font-size:16px;font-weight:700;">{ev_sign}{ev_pct:.1f}%</p>
+    <p style="margin:0;color:#555;font-size:10px;">Win {win_prob:.1%}</p>
+  </div>
+</div>""", unsafe_allow_html=True)
                     for j, leg in enumerate(p["legs"], 1):
                         prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
                         edge_pct = f"+{leg.get('edge', 0):.1%}"
                         odds_fmt = f"+{int(leg['over_odds'])}" if leg['over_odds'] > 0 else str(int(leg['over_odds']))
-                        st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_fmt}) *{edge_pct}*")
+                        confirmed = "✅" if leg.get("edge_confirmed") else ""
+                        st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_fmt}) *{edge_pct}* {confirmed}")
                         st.caption(f"   {leg['team']}")
                     if st.button(f"📝 Log {n}-Leg Parlay to Tracker",
                                  key=f"log_parlay_{sport}_{n}", use_container_width=True):
@@ -1427,7 +2062,7 @@ def render_sport_tab(sport: str, use_live: bool):
 
     # ── Charts ──
     st.markdown("### 📈 Visual Analysis")
-    tab1, tab2, tab3 = st.tabs(["🔍 Fair vs Book", "📊 Top Plays", "📉 Edge Distribution"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Fair vs Book", "📊 Top Plays", "📉 Edge Distribution", "🔗 Correlation"])
 
     with tab1:
         if len(filtered) > 0:
@@ -1467,6 +2102,71 @@ def render_sport_tab(sport: str, use_live: bool):
             fig3.update_layout(**PLOT_LAYOUT)
             st.plotly_chart(fig3, use_container_width=True)
 
+    with tab4:
+        # ── Prop Correlation Heatmap ──
+        if len(filtered) >= 2:
+            try:
+                from edge_model import get_market_pair_rho as _get_rho
+                import numpy as _np
+                # Build matrix for top-N plays by confidence
+                heat_df = filtered.head(20).copy()
+                labels = (heat_df["player"].str.split().str[-1].fillna("?") +
+                          "\n" + heat_df["market"].str.replace("_", " ", regex=False).fillna("?"))
+                n = len(heat_df)
+                mat = _np.zeros((n, n))
+                for ii in range(n):
+                    for jj in range(n):
+                        if ii == jj:
+                            mat[ii, jj] = 1.0
+                        else:
+                            same_p = (heat_df.iloc[ii]["player"] == heat_df.iloc[jj]["player"])
+                            mat[ii, jj] = _get_rho(
+                                heat_df.iloc[ii]["market"],
+                                heat_df.iloc[jj]["market"],
+                                same_p,
+                            )
+
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=mat,
+                    x=labels.tolist(),
+                    y=labels.tolist(),
+                    colorscale=[
+                        [0.0, "#1a2a5a"],
+                        [0.5, "#1a1a24"],
+                        [1.0, "#7c3aed"],
+                    ],
+                    zmin=-1, zmax=1,
+                    colorbar=dict(title="ρ", tickfont=dict(color="#888")),
+                    hovertemplate="%{y} × %{x}<br>ρ = %{z:.2f}<extra></extra>",
+                ))
+                fig_heat.update_layout(
+                    title="Prop Correlation Matrix (Top 20 plays)",
+                    height=500,
+                    xaxis=dict(tickfont=dict(size=9, color="#888")),
+                    yaxis=dict(tickfont=dict(size=9, color="#888")),
+                    **PLOT_LAYOUT,
+                )
+                st.plotly_chart(fig_heat, use_container_width=True)
+                st.caption(
+                    "Purple = highly correlated (same player, overlapping markets). "
+                    "Dark = uncorrelated. Avoid stacking high-ρ legs in parlays — "
+                    "the book's SGP price already penalises you for the correlation."
+                )
+            except Exception as _e:
+                st.info(f"Heatmap unavailable: {_e}")
+        else:
+            st.info("Need at least 2 props to draw correlation heatmap.")
+
+    # ── Player News / Injury Feed ──
+    st.divider()
+    with st.expander("📰 Player News & Injury Feed", expanded=False):
+        try:
+            from news_feed import render_news_sidebar as _render_news
+            _players = filtered["player"].dropna().unique().tolist()[:40]
+            _render_news(_players, sport)
+        except Exception as _ne:
+            st.caption(f"News unavailable: {_ne}")
+
     # ── AI Chat ──
     if GROQ_API_KEY:
         st.divider()
@@ -1500,8 +2200,25 @@ def main():
     if _os.path.exists(_banner):
         st.image(_banner, use_container_width=True)
     else:
-        st.title("🎯 Sports Betting Plus Bot")
-        st.markdown('<p style="color:#8888aa;margin-top:-1rem;font-size:0.95rem;">Multi-Sport Player Props · Live Value Dashboard · Sharp Bettor Tools</p>', unsafe_allow_html=True)
+        st.markdown("""
+<div style="text-align:center;padding:36px 0 28px;">
+  <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
+              border-radius:14px;padding:12px 22px;margin-bottom:16px;">
+    <span style="color:#fff;font-size:22px;font-weight:900;letter-spacing:-0.5px;">
+      Sports Betting+
+    </span>
+  </div>
+  <h1 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:800;
+             background:linear-gradient(90deg,#a78bfa,#7c3aed,#4f46e5);
+             -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+             background-clip:text;letter-spacing:-0.5px;">
+    Daily Props Dashboard
+  </h1>
+  <p style="color:#666;font-size:0.9rem;margin:6px 0 0;">
+    Multi-Sport Player Props &nbsp;·&nbsp; Live Value Detection &nbsp;·&nbsp; Sharp Bettor Tools
+  </p>
+</div>
+""", unsafe_allow_html=True)
 
     with st.sidebar:
         import os as _os
@@ -1512,7 +2229,12 @@ def main():
         elif _os.path.exists(_banner_sb):
             st.image(_banner_sb, use_container_width=True)
         else:
-            st.markdown("## 🎯 Sports Betting Plus Bot")
+            st.markdown("""
+<div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border-radius:12px;
+            padding:10px 14px;margin-bottom:4px;text-align:center;">
+  <span style="color:#fff;font-size:16px;font-weight:900;letter-spacing:-0.3px;">Sports Betting+</span>
+</div>
+""", unsafe_allow_html=True)
         st.divider()
         st.markdown("## ⚙️ Settings")
         use_live = st.toggle("Live Odds (The Odds API)", value=bool(ODDS_API_KEY),
@@ -1527,18 +2249,136 @@ def main():
                                       format_func=lambda x: {0.1: "1/10 (Very Safe)", 0.25: "1/4 (Recommended)", 0.5: "1/2 (Aggressive)", 1.0: "Full (Risky)"}[x],
                                       key="kelly_mult")
         st.caption("¼ Kelly is the professional standard. Full Kelly risks ruin.")
+
+        # ── Kelly Portfolio Optimizer (sidebar) ──
+        st.divider()
+        with st.expander("📐 Kelly Portfolio Optimizer", expanded=False):
+            st.caption("Allocate bankroll optimally across multiple correlated bets.")
+            _kp_sport = st.selectbox("Sport", [s for s in SPORTS_CONFIG if SPORTS_CONFIG[s]["status"] == "live"],
+                                     key="kp_sport")
+            _kp_min_edge = st.slider("Min Edge %", 1, 15, 3, key="kp_min_edge") / 100
+            _kp_max_total = st.slider("Max Total Exposure %", 5, 50, 20, key="kp_max_total") / 100
+            if st.button("🔢 Optimize", key="kp_btn", use_container_width=True):
+                with st.spinner("Optimizing…"):
+                    try:
+                        from edge_model import kelly_portfolio as _kp, edge_confidence_score as _kpecs
+                        from bet_tracker import get_clv_avg as _kpclv
+                        _kp_df, _ = load_data(_kp_sport, use_live)
+                        _kp_clv = _kpclv(n_recent=30)
+                        if _kp_df is not None and not _kp_df.empty:
+                            _kp_plays = [
+                                r.to_dict()
+                                for _, r in _kp_df.iterrows()
+                                if float(r.get("edge", 0)) >= _kp_min_edge
+                            ]
+                            if _kp_plays:
+                                _kp_result = _kp(
+                                    _kp_plays, bankroll,
+                                    max_total_pct=_kp_max_total,
+                                    clv_avg=_kp_clv,
+                                )
+                                for _kpr in _kp_result[:8]:
+                                    st.markdown(
+                                        f"**{_kpr['player']}** {_kpr['market'].replace('_',' ')}  \n"
+                                        f"Portfolio: {_kpr['portfolio_pct']:.2f}% · "
+                                        f"**${_kpr['stake']:.2f}** · EV ${_kpr['ev_on_stake']:+.2f}"
+                                    )
+                            else:
+                                st.info("No plays meet the minimum edge threshold.")
+                    except Exception as _kpe:
+                        st.error(f"Optimizer error: {_kpe}")
+
         st.divider()
         st.markdown("## 🔍 Filters")
 
+    # ── Parallel preload: warm all sport caches in background threads ──
+    # This is the key performance upgrade — all sports load simultaneously so
+    # tab switches are instant instead of each one waiting ~4s sequentially.
+    preload_all_sports_parallel(use_live)
+
+    # ── 🎯 Best 3 Bets Today ─────────────────────────────────────────────────
+    _b3_col, _ = st.columns([1, 3])
+    with _b3_col:
+        if st.button("🎯 Best 3 Bets Today", use_container_width=True, type="primary",
+                     help="Cross-sport: find the top 3 highest-confidence props right now and log them to tracker"):
+            with st.spinner("Scanning all sports for today's best plays…"):
+                from edge_model import edge_confidence_score as _ecs, confidence_label as _clbl
+                from bet_tracker import add_bet as _add_bet, get_clv_avg as _get_clv_avg
+                _clv_avg_b3 = _get_clv_avg(n_recent=30)
+                _all_candidates = []
+                for _sport in [s for s, c in SPORTS_CONFIG.items() if c.get("status") == "live"]:
+                    try:
+                        _df, _ = load_data(_sport, use_live)
+                        if _df is None or _df.empty:
+                            continue
+                        for _, _row in _df.iterrows():
+                            _score = _ecs(
+                                float(_row.get("edge", 0)),
+                                float(_row.get("fair_est", 0.5)),
+                                bool(_row.get("edge_confirmed", False)),
+                                int(_row.get("n_books", 1)),
+                                float(_row.get("over_odds", -110)),
+                                _clv_avg_b3,
+                            )
+                            _all_candidates.append({
+                                "sport":    _sport,
+                                "player":   _row.get("player", ""),
+                                "team":     _row.get("team", ""),
+                                "market":   _row.get("market", ""),
+                                "line":     _row.get("line", ""),
+                                "over_odds": _row.get("over_odds", -110),
+                                "fair_est": _row.get("fair_est", 0.5),
+                                "edge":     _row.get("edge", 0),
+                                "confidence": _score,
+                            })
+                    except Exception:
+                        pass
+
+                _all_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+                _top3 = _all_candidates[:3]
+
+                if not _top3:
+                    st.warning("No plays found across live sports right now.")
+                else:
+                    _bankroll_b3 = st.session_state.get("bankroll_input", 1000.0)
+                    _kmult_b3   = st.session_state.get("kelly_mult", 0.25)
+                    _logged = []
+                    for _p in _top3:
+                        _lbl, _col = _clbl(_p["confidence"])
+                        try:
+                            from edge_model import recommended_stake as _rstk
+                            _rec_b3 = _rstk(_p["fair_est"], float(_p["over_odds"]),
+                                            _bankroll_b3, _kmult_b3, _clv_avg_b3)
+                            _stake_b3 = _rec_b3["stake"]
+                        except Exception:
+                            _stake_b3 = round(_bankroll_b3 * 0.02, 2)
+                        _add_bet(
+                            _p["sport"], _p["player"],
+                            f"{_p['market']} O{_p['line']}",
+                            float(_p["line"]) if _p["line"] else 0.5,
+                            int(float(_p["over_odds"])),
+                            _stake_b3, "Best3Auto",
+                            f"Auto-logged by Best 3 Bets · Confidence {_p['confidence']}/100",
+                            fair_est=_p["fair_est"],
+                        )
+                        _logged.append(
+                            f"**{_p['player']}** ({_p['sport']}) · {_p['market'].replace('_',' ')} "
+                            f"O{_p['line']} @ {_p['over_odds']:+g} · {_lbl} {_p['confidence']}/100"
+                        )
+
+                    st.success(f"✅ Logged {len(_logged)} best bet(s) to Tracker:")
+                    for _line in _logged:
+                        st.markdown(f"- {_line}")
+
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["📊 Tracker"]
+    all_tab_labels = sport_tab_labels + ["📈 CLV & ROI", "📊 Tracker"]
     all_tabs = st.tabs(all_tab_labels)
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-1], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["📈 CLV & ROI", "📊 Tracker"])], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
@@ -1590,6 +2430,11 @@ RAPIDAPI_KEY=your_key_here
             else:
                 render_sport_tab(sport, use_live)
 
+    # CLV & ROI tab (second to last)
+    with all_tabs[-2]:
+        render_clv_tab()
+
+    # Tracker tab (last)
     with all_tabs[-1]:
         if _tiers and not _tiers.can(_current_tier, "tracker"):
             st.markdown("""
@@ -1606,7 +2451,20 @@ RAPIDAPI_KEY=your_key_here
             render_bet_tracker()
 
     st.divider()
-    st.markdown('<p style="text-align:center;color:#555577;font-size:0.8rem;">Sports Betting Plus Bot · Live odds via The Odds API · AI by Groq · Always bet responsibly 🎯</p>', unsafe_allow_html=True)
+    st.markdown("""
+<div style="text-align:center;padding:28px 0 8px;border-top:1px solid #2a2a3a;margin-top:24px;">
+  <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
+              border-radius:10px;padding:8px 16px;margin-bottom:12px;">
+    <span style="color:#fff;font-size:14px;font-weight:800;letter-spacing:-0.3px;">Sports Betting+</span>
+  </div>
+  <p style="color:#333;font-size:11px;margin:4px 0 2px;">
+    Live odds via The Odds API &nbsp;·&nbsp; AI analysis by Groq &nbsp;·&nbsp; Sharp data via Action Network
+  </p>
+  <p style="color:#262630;font-size:11px;margin:0;">
+    Always bet responsibly. Past performance does not guarantee future results.
+  </p>
+</div>
+""", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

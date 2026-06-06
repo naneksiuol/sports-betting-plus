@@ -343,25 +343,36 @@ def scrape_props(sport: str) -> pd.DataFrame:
                     books_available.append("DK")
                 book_tag = "/".join(books_available)
 
-                # Fair probability — three-tier approach:
-                # 1. Consensus (15) both sides → market consensus, best calibrator
+                # Fair probability — Power de-vig (primary) with three-tier fallback:
+                # 1. Consensus (15) both sides → market consensus, most accurate calibrator
                 # 2. Open (30) both sides → sharp opening line, second best
-                # 3. All books Shin de-vig → broad consensus from whatever is available
-                # 4. Fallback: average implied / 1.07
-                from edge_model import shin_devig
+                # 3. Multi-book Power de-vig consensus → average across all books w/ both sides
+                # 4. Fallback: average implied / 1.07 (no under available)
+                #
+                # Power de-vig is superior to Shin: it finds the exact exponent k such that
+                # p_over^k + p_under^k = 1, removing overround without the favorite-longshot
+                # assumption baked into Shin. Result: tighter fair probabilities on favorites.
+                from edge_model import power_devig, shin_devig
                 if consensus_over is not None and consensus_under is not None:
-                    fair_est = shin_devig(_imp(consensus_over), _imp(consensus_under))
+                    fair_est = power_devig(_imp(consensus_over), _imp(consensus_under))
+                    fair_est_shin_ref = shin_devig(_imp(consensus_over), _imp(consensus_under))
                 elif open_over is not None and open_under is not None:
-                    fair_est = shin_devig(_imp(open_over), _imp(open_under))
+                    fair_est = power_devig(_imp(open_over), _imp(open_under))
+                    fair_est_shin_ref = shin_devig(_imp(open_over), _imp(open_under))
                 else:
-                    fair_est = consensus_fair_prob(book_over, book_under, method="shin")
+                    fair_est = consensus_fair_prob(book_over, book_under, method="power")
+                    fair_est_shin_ref = consensus_fair_prob(book_over, book_under, method="shin")
                     if fair_est is None:
                         if book_over:
                             all_imps = [_imp(o) for o in book_over.values()]
                             fair_est = (sum(all_imps) / len(all_imps)) / 1.07
+                            fair_est_shin_ref = fair_est
                         else:
                             continue
+                        if fair_est_shin_ref is None:
+                            fair_est_shin_ref = fair_est
                 fair_est = min(fair_est, 0.99)
+                fair_est_shin_ref = min(fair_est_shin_ref or fair_est, 0.99)
 
                 # NegBin correction is a supplementary signal — useful when we have
                 # an independent count model.  Applied to a devigged line alone it
@@ -375,6 +386,8 @@ def scrape_props(sport: str) -> pd.DataFrame:
                 # Primary edge: Shin devig vs best available over line
                 edge         = round(fair_est - best_over_implied, 4)
                 edge_negbin  = round(fair_est_nb - best_over_implied, 4)
+                # Edge agreement: True when Power de-vig and NegBin both agree on direction
+                edge_confirmed = (fair_est > best_over_implied) == (fair_est_nb > best_over_implied)
 
                 rows.append({
                     "player":           player_name,
@@ -383,10 +396,12 @@ def scrape_props(sport: str) -> pd.DataFrame:
                     "line":             line_val,
                     "over_odds":        round(best_over_odds),
                     "book_implied":     round(best_over_implied, 4),
-                    "fair_est":         round(fair_est, 4),       # Shin-only (primary)
-                    "fair_est_negbin":  round(fair_est_nb, 4),    # NegBin-corrected (reference)
-                    "edge":             edge,                      # Shin-based (primary)
-                    "edge_negbin":      edge_negbin,               # NegBin-based (reference)
+                    "fair_est":         round(fair_est, 4),           # Power de-vig (primary)
+                    "fair_est_shin":    round(fair_est_shin_ref, 4),  # Shin (reference)
+                    "fair_est_negbin":  round(fair_est_nb, 4),        # NegBin-corrected (reference)
+                    "edge":             edge,                          # Power de-vig (primary)
+                    "edge_negbin":      edge_negbin,                   # NegBin-based (reference)
+                    "edge_confirmed":   edge_confirmed,                # Both models agree
                     "negbin_delta":     round(fair_est_nb - fair_est, 4),
                     "n_books":          len(fd_dk_odds),
                     "books":            book_tag,
@@ -401,6 +416,7 @@ def scrape_props(sport: str) -> pd.DataFrame:
     df = df[df["player"] != "Unknown"]
     df = df.drop_duplicates(subset=["player", "market", "line"])
     cols = ["player", "team", "market", "line", "over_odds",
-            "book_implied", "fair_est", "fair_est_negbin", "edge", "edge_negbin",
+            "book_implied", "fair_est", "fair_est_shin", "fair_est_negbin",
+            "edge", "edge_negbin", "edge_confirmed",
             "negbin_delta", "n_books", "books", "fd_odds", "dk_odds"]
     return df[[c for c in cols if c in df.columns]]

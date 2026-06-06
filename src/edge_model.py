@@ -251,6 +251,97 @@ def edge_rating(edge: float) -> str:
         return "❌ No Edge"
 
 
+def edge_confidence_score(
+    edge: float,
+    fair_est: float,
+    edge_confirmed: bool = False,
+    n_books: int = 1,
+    over_odds: float = -110,
+    clv_avg: float | None = None,
+) -> int:
+    """
+    Composite Edge Confidence Score: 0–100.
+
+    Combines five signals, each contributing up to 20 points:
+      1. Edge magnitude  — primary model signal (Power de-vig)
+      2. Fair probability — rewards realistic odds range, penalizes extreme longshots
+      3. NegBin agreement — both models point same direction (edge_confirmed)
+      4. Book coverage   — more books offering = more efficient, reliable line
+      5. CLV track record — historical proof the model has real edge
+
+    Returns integer 0–100 for easy display as a progress bar or rating.
+    """
+    score = 0.0
+
+    # 1. Edge magnitude (0–30 pts) — biggest signal
+    if edge >= 0.08:
+        score += 30
+    elif edge >= 0.05:
+        score += 24
+    elif edge >= 0.03:
+        score += 18
+    elif edge >= 0.015:
+        score += 12
+    elif edge >= 0.01:
+        score += 6
+    elif edge > 0:
+        score += 2
+
+    # 2. Fair probability / odds range (0–20 pts)
+    # Sweet spot: 35%–65% fair probability (realistic "chalk" range)
+    # Penalise extreme longshots (low fair) where variance overwhelms edge
+    if 0.40 <= fair_est <= 0.65:
+        score += 20
+    elif 0.30 <= fair_est < 0.40 or 0.65 < fair_est <= 0.75:
+        score += 14
+    elif 0.20 <= fair_est < 0.30 or 0.75 < fair_est <= 0.85:
+        score += 8
+    else:
+        score += 3  # extreme territory — high variance
+
+    # 3. Model agreement (0–20 pts) — Power de-vig AND NegBin both positive
+    if edge_confirmed and edge > 0:
+        score += 20
+    elif edge > 0:
+        score += 8  # only one model positive
+
+    # 4. Book coverage (0–15 pts) — more books = more liquid, tighter line
+    if n_books >= 2:
+        score += 15
+    elif n_books == 1:
+        score += 8
+
+    # 5. CLV history (0–15 pts) — proven track record
+    if clv_avg is not None:
+        if clv_avg >= 3.0:
+            score += 15
+        elif clv_avg >= 1.5:
+            score += 11
+        elif clv_avg >= 0.5:
+            score += 7
+        elif clv_avg >= 0.0:
+            score += 3
+        # Negative CLV adds 0 — punish bad history
+    else:
+        score += 5  # neutral — no history yet
+
+    return min(int(round(score)), 100)
+
+
+def confidence_label(score: int) -> tuple[str, str]:
+    """Return (label, hex_color) for a confidence score."""
+    if score >= 80:
+        return "🔥 Elite", "#00ff88"
+    elif score >= 65:
+        return "✅ Strong", "#52b788"
+    elif score >= 50:
+        return "🟡 Good", "#f9c74f"
+    elif score >= 35:
+        return "🟠 Marginal", "#f8961e"
+    else:
+        return "🔴 Weak", "#ff6060"
+
+
 # ── Closing Line Value (CLV) ──────────────────────────────────────────────────
 
 def closing_line_value(bet_odds: float, closing_odds: float) -> float:
@@ -608,3 +699,119 @@ def decimal_to_american_float(dec: float) -> str:
     if dec >= 2.0:
         return f"+{int(round((dec - 1) * 100))}"
     return f"{int(round(-100 / (dec - 1)))}"
+
+
+# ── Kelly Portfolio Optimizer ─────────────────────────────────────────────────
+
+def kelly_portfolio(
+    plays: list[dict],
+    bankroll: float,
+    max_single_pct: float = 0.08,
+    max_total_pct: float = 0.25,
+    clv_avg: float | None = None,
+) -> list[dict]:
+    """
+    Multi-bet Kelly portfolio optimizer.
+
+    Unlike single-bet Kelly, this function considers the entire slate of plays
+    simultaneously and scales allocations to avoid over-betting correlated legs.
+
+    Algorithm:
+      1. Compute individual Kelly fractions for each play
+      2. Cap each at max_single_pct of bankroll
+      3. Detect correlation clusters (same player or overlapping markets)
+      4. Apply correlation penalty: reduce cluster bets by √(1 - ρ_avg)
+      5. Scale final allocation so total exposure ≤ max_total_pct of bankroll
+      6. Sort by recommended stake descending
+
+    Args:
+        plays:          List of dicts with keys: player, market, fair_est,
+                        over_odds (American), edge. All others optional.
+        bankroll:       Current bankroll in dollars.
+        max_single_pct: Hard cap per bet as fraction of bankroll (default 8%).
+        max_total_pct:  Hard cap on total exposure across all bets (default 25%).
+        clv_avg:        Recent CLV average for dynamic Kelly scaling.
+
+    Returns:
+        List of play dicts enriched with 'stake', 'kelly_pct', 'portfolio_pct',
+        sorted by stake descending.
+    """
+    if not plays or bankroll <= 0:
+        return []
+
+    results = []
+    for play in plays:
+        win_prob = float(play.get("fair_est", 0.5))
+        odds     = float(play.get("over_odds", -110))
+        edge     = float(play.get("edge", 0.0))
+        if edge <= 0 or win_prob <= 0:
+            continue
+
+        dec = american_to_decimal(odds)
+        full_k = kelly_fraction(win_prob, dec)
+        dyn_mult = dynamic_kelly_multiplier(edge, clv_avg)
+        raw_pct = full_k * dyn_mult
+
+        # Cap at single-bet max
+        capped_pct = min(raw_pct, max_single_pct)
+
+        results.append({
+            **play,
+            "_full_kelly":  full_k,
+            "_raw_pct":     raw_pct,
+            "_kelly_pct":   capped_pct,
+            "_win_prob":    win_prob,
+            "_dec_odds":    dec,
+        })
+
+    if not results:
+        return []
+
+    # Correlation penalty: detect same-player plays
+    for i, r in enumerate(results):
+        player_i  = r.get("player", f"__p{i}")
+        market_i  = r.get("market", "")
+        corr_sum  = 0.0
+        corr_n    = 0
+        for j, s in enumerate(results):
+            if i == j:
+                continue
+            player_j = s.get("player", f"__p{j}")
+            market_j = s.get("market", "")
+            same_p   = (player_i.strip().lower() == player_j.strip().lower())
+            rho      = get_market_pair_rho(market_i, market_j, same_p)
+            corr_sum += abs(rho)
+            corr_n   += 1
+
+        avg_rho = (corr_sum / corr_n) if corr_n > 0 else 0.0
+        # Penalty: reduce allocation by correlation factor
+        penalty = math.sqrt(max(0.0, 1.0 - avg_rho))
+        r["_portfolio_pct"] = r["_kelly_pct"] * penalty
+
+    # Scale so total ≤ max_total_pct
+    total_raw = sum(r["_portfolio_pct"] for r in results)
+    scale = min(1.0, max_total_pct / total_raw) if total_raw > 0 else 1.0
+
+    output = []
+    for r in results:
+        final_pct = r["_portfolio_pct"] * scale
+        stake     = round(bankroll * final_pct, 2)
+        ev_dollar = round(r.get("edge", 0) * stake, 2)
+        output.append({
+            "player":        r.get("player", ""),
+            "team":          r.get("team", ""),
+            "market":        r.get("market", ""),
+            "line":          r.get("line", ""),
+            "over_odds":     r.get("over_odds", ""),
+            "fair_est":      r.get("fair_est", 0),
+            "edge":          r.get("edge", 0),
+            "confidence":    r.get("confidence", 0),
+            "full_kelly_pct":  round(r["_full_kelly"] * 100, 2),
+            "kelly_pct":       round(r["_kelly_pct"] * 100, 2),
+            "portfolio_pct":   round(final_pct * 100, 3),
+            "stake":           stake,
+            "ev_on_stake":     ev_dollar,
+        })
+
+    output.sort(key=lambda x: x["stake"], reverse=True)
+    return output

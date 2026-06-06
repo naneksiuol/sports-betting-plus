@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 # Create MCP server
 mcp = FastMCP("Sports Betting Plus - MLB Hits")
 
-DATA_PATH = Path("data/hits_board-1.csv")
+DATA_PATH = Path(__file__).parent.parent.parent / "data" / "hits_board-1.csv"
 
 
 def load_hits_data():

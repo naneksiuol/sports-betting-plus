@@ -43,7 +43,8 @@ def _compute_clv(placed_odds: float, reference_odds: float) -> float:
 
 def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
             stake: float, book: str = "", notes: str = "",
-            sharp_odds: int = None, fair_est: float = None) -> dict:
+            sharp_odds: int = None, fair_est: float = None,
+            is_parlay: bool = False) -> dict:
     """
     Log a bet. Automatically computes opening CLV if sharp_odds provided.
     sharp_odds = Pinnacle/Consensus line at bet placement time.
@@ -74,6 +75,7 @@ def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
         "closing_odds": None,
         "clv": None,                  # CLV vs true closing line (filled later)
         "notes": notes,
+        "is_parlay": is_parlay,
     }
     bets = load_bets()
     bets.append(bet)
@@ -115,6 +117,27 @@ def update_result(bet_id: str, result: str, closing_odds: int = None):
 def delete_bet(bet_id: str):
     bets = [b for b in load_bets() if b["id"] != bet_id]
     save_bets(bets)
+
+
+def get_clv_avg(n_recent: int = 30) -> float | None:
+    """
+    Return average CLV over the most recent n_recent settled bets.
+    Used to wire real CLV history into dynamic Kelly sizing.
+    Returns None if insufficient data (<5 bets with CLV).
+    """
+    bets = load_bets()
+    settled = [b for b in bets if b["result"] in ("win", "loss", "push")]
+    # Use best available CLV — true closing first, then opening as proxy
+    clv_vals = []
+    for b in reversed(settled):  # most recent first
+        clv = b.get("clv") or b.get("opening_clv")
+        if clv is not None:
+            clv_vals.append(float(clv))
+        if len(clv_vals) >= n_recent:
+            break
+    if len(clv_vals) < 5:
+        return None
+    return round(sum(clv_vals) / len(clv_vals), 3)
 
 
 def get_stats() -> dict:

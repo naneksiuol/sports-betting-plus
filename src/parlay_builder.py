@@ -162,21 +162,56 @@ def get_top_candidates(df: pd.DataFrame, min_odds: int = -500,
     return pool.sort_values("edge", ascending=False).head(n)
 
 
+def parlay_ev(legs: list[dict], stake: float = 10.0) -> dict:
+    """
+    Expected value of a multi-leg parlay.
+
+    win_prob  = product of each leg's fair_est (independent legs assumption)
+    EV        = win_prob × combined_decimal − 1  (as fraction of stake)
+
+    Returns dict with win_prob, ev_fraction, ev_dollars, ev_pct.
+    """
+    if not legs:
+        return {"win_prob": 0.0, "ev_fraction": 0.0, "ev_dollars": 0.0, "ev_pct": 0.0}
+
+    win_prob = 1.0
+    for leg in legs:
+        win_prob *= min(max(float(leg.get("fair_est", 0.5)), 0.001), 0.999)
+
+    dec_odds = [american_to_decimal(r["over_odds"]) for r in legs]
+    combined_dec = 1.0
+    for d in dec_odds:
+        combined_dec *= d
+
+    ev_fraction = win_prob * combined_dec - 1.0   # e.g. 0.08 = +8% EV
+    return {
+        "win_prob":    round(win_prob, 4),
+        "ev_fraction": round(ev_fraction, 4),
+        "ev_dollars":  round(ev_fraction * stake, 2),
+        "ev_pct":      round(ev_fraction * 100, 2),
+    }
+
+
 def build_multi_game_parlay(df: pd.DataFrame, n_legs: int,
-                            min_odds: int = -300, max_odds: int = 300) -> list[dict]:
+                            min_odds: int = -300, max_odds: int = 300,
+                            min_leg_edge: float = 0.01) -> list[dict]:
     """
     Build an n-leg multi-game parlay.
 
     Rules (in priority order):
       1. One player per game — no stacking the same matchup
       2. One prop per player — best EV prop chosen if a player has multiple
-      3. Legs ranked by EV score = edge * sqrt(fair_prob)
+      3. Each leg must have at least min_leg_edge (default 1%) individual edge
+      4. Legs ranked by EV score = edge * sqrt(fair_prob)
 
     No bucket cap: batter_hits from five different games are five independent bets.
     Cross-game correlation is near zero regardless of market type; the "one per game"
     rule is the correct guard, not market-bucket filtering.
     """
     pool = df[(df["over_odds"] >= min_odds) & (df["over_odds"] <= max_odds)].copy()
+    # Apply minimum edge floor per leg — only include props with genuine edge
+    if "edge" in pool.columns:
+        pool = pool[pool["edge"] >= min_leg_edge]
     ranked = _score_and_rank(pool)
 
     seen_games   = set()
@@ -314,6 +349,12 @@ def build_sgps(df: pd.DataFrame, min_odds: int = -300,
         ind_penalty = _independence_penalty(selected)
         combined_ev = sum(r.get("edge", 0) for r in selected) * ind_penalty
 
+        # SGP min combined edge filter — skip SGPs where the copula-adjusted
+        # combined edge is negative or negligible. No point betting a 3-leg SGP
+        # just because one leg has +2% if the other two drag it below zero.
+        if combined_ev <= 0.0:
+            continue
+
         odds_list = [r["over_odds"] for r in selected]
         payout = parlay_payout(odds_list)
 
@@ -397,6 +438,9 @@ def build_diverse_sgps(
             for _, selected in quick_scored[: n_per_size * 2]:
                 ind_penalty  = _independence_penalty(selected)
                 combined_ev  = sum(r.get("edge", 0) for r in selected) * ind_penalty
+                # Skip combos with non-positive combined edge
+                if combined_ev <= 0.0:
+                    continue
                 odds_list    = [r["over_odds"] for r in selected]
                 payout       = parlay_payout(odds_list)
                 corr_tax     = sgp_correlation_tax(selected, payout["combined_decimal"])
@@ -442,12 +486,13 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
     for n in [2, 3, 4, 5]:
         if pos_edge_games < n:
             continue  # not enough qualifying games for this leg count
-        legs = build_multi_game_parlay(df, n_legs=n, min_odds=-300, max_odds=300)
+        legs = build_multi_game_parlay(df, n_legs=n, min_odds=-300, max_odds=300, min_leg_edge=0.01)
         if len(legs) == n:
             odds = [r["over_odds"] for r in legs]
             parlays[f"{n}_leg"] = {
-                "legs": legs,
+                "legs":   legs,
                 "payout": parlay_payout(odds, stake),
+                "ev":     parlay_ev(legs, stake),
             }
 
     sgps = build_sgps(sgp_source, min_odds=-300, n_sgps=5, legs_per_sgp=3)
