@@ -2200,171 +2200,6 @@ def render_sport_tab(sport: str, use_live: bool):
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-# ── All-Sports Cross-Sport Leaderboard ───────────────────────────────────────
-def _render_all_sports_tab(use_live: bool, allowed_sports: list):
-    """
-    Single ranked view of all +EV props across every live sport.
-    No tab-hopping required — highest-confidence plays surface to the top.
-    Also fires Telegram alerts for newly-appeared high-confidence plays.
-    """
-    from edge_model import edge_confidence_score as _ecs, confidence_label as _clbl
-    from bet_tracker import get_clv_avg as _get_clv_avg
-
-    st.markdown("## 🌐 All-Sports Best Plays")
-    st.caption("Top value props ranked by confidence score across every live sport. Refreshes with the sidebar timer.")
-
-    _clv_avg = _get_clv_avg(n_recent=30)
-    live_sports = [s for s, c in SPORTS_CONFIG.items()
-                   if c.get("status") == "live" and s in allowed_sports]
-
-    all_rows = []
-    with st.spinner("Loading all sports…"):
-        for _sp in live_sports:
-            try:
-                _df, _ = load_data(_sp, use_live)
-                if _df is None or _df.empty:
-                    continue
-                _cfg = SPORTS_CONFIG[_sp]
-                _allowed_mkts = set(_cfg["market_labels"].keys())
-                _df = _df[_df["market"].isin(_allowed_mkts)].copy()
-                if _df.empty:
-                    continue
-                for _, row in _df.iterrows():
-                    _edge = float(row.get("edge", 0))
-                    if _edge <= 0:
-                        continue
-                    _score = _ecs(
-                        edge=_edge,
-                        fair_est=float(row.get("fair_est", 0.5)),
-                        edge_confirmed=bool(row.get("edge_confirmed", False)),
-                        n_books=int(row.get("n_books", 1)),
-                        over_odds=float(row.get("over_odds", -110)),
-                        clv_avg=_clv_avg,
-                    )
-                    _lbl, _col = _clbl(_score)
-                    _mkt_label = _cfg["market_labels"].get(row.get("market", ""), row.get("market", ""))
-                    all_rows.append({
-                        "sport":      _sp,
-                        "icon":       _cfg["icon"],
-                        "player":     row.get("player", ""),
-                        "team":       row.get("team", ""),
-                        "market":     row.get("market", ""),
-                        "market_lbl": _mkt_label,
-                        "line":       row.get("line", ""),
-                        "over_odds":  row.get("over_odds", ""),
-                        "fair_est":   row.get("fair_est", 0.5),
-                        "edge":       _edge,
-                        "n_books":    row.get("n_books", 1),
-                        "edge_confirmed": bool(row.get("edge_confirmed", False)),
-                        "confidence": _score,
-                        "conf_label": _lbl,
-                        "conf_color": _col,
-                    })
-            except Exception:
-                pass
-
-    if not all_rows:
-        st.info("No positive-edge plays found across any live sport right now. Check back closer to game time.")
-        return
-
-    all_rows.sort(key=lambda x: x["confidence"], reverse=True)
-
-    # ── Live Telegram alerts for newly-appeared plays ─────────────────────────
-    _alert_threshold = 70
-    _seen_key = "alerted_props"
-    _prev_seen = st.session_state.get(_seen_key, set())
-    _new_alerts = []
-    for r in all_rows:
-        if r["confidence"] >= _alert_threshold:
-            _prop_id = f"{r['sport']}|{r['player']}|{r['market']}|{r['line']}"
-            if _prop_id not in _prev_seen:
-                _new_alerts.append(r)
-                _prev_seen.add(_prop_id)
-    st.session_state[_seen_key] = _prev_seen
-
-    if _new_alerts:
-        try:
-            from telegram_bot import is_configured as _tg_ok, broadcast as _tg_bc
-            if _tg_ok():
-                for _a in _new_alerts:
-                    _odds_fmt = f"+{int(_a['over_odds'])}" if float(_a['over_odds']) > 0 else str(int(_a['over_odds']))
-                    _msg = (
-                        f"🔔 *New High-Confidence Prop* — {_a['icon']} {_a['sport']}\n"
-                        f"*{_a['player']}* ({_a['team']})\n"
-                        f"{_a['market_lbl']} O{_a['line']} @ `{_odds_fmt}`\n"
-                        f"Edge: *{_a['edge']:.1%}* · Fair: {_a['fair_est']:.1%}\n"
-                        f"Confidence: *{_a['confidence']}/100* {_a['conf_label']}"
-                    )
-                    _tg_bc(_msg)
-        except Exception:
-            pass
-
-    # ── Summary KPIs ──────────────────────────────────────────────────────────
-    _elite  = sum(1 for r in all_rows if r["confidence"] >= 80)
-    _strong = sum(1 for r in all_rows if 65 <= r["confidence"] < 80)
-    _good   = sum(1 for r in all_rows if 50 <= r["confidence"] < 65)
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total +EV Props", len(all_rows))
-    k2.metric("🔥 Elite (≥80)", _elite)
-    k3.metric("✅ Strong (≥65)", _strong)
-    k4.metric("🟡 Good (≥50)", _good)
-
-    # ── Alert badge ──────────────────────────────────────────────────────────
-    if _new_alerts:
-        st.success(f"🔔 {len(_new_alerts)} new high-confidence prop(s) detected — Telegram alert sent!")
-
-    st.divider()
-
-    # ── Confidence filter ─────────────────────────────────────────────────────
-    _min_conf = st.slider("Min Confidence Score", 0, 100, 50, key="all_sports_min_conf")
-    _sport_filter = st.multiselect("Filter Sports", live_sports, default=live_sports, key="all_sports_filter")
-    _disp = [r for r in all_rows if r["confidence"] >= _min_conf and r["sport"] in _sport_filter]
-
-    st.caption(f"Showing **{len(_disp)}** plays · sorted by confidence")
-
-    # ── Ranked cards ─────────────────────────────────────────────────────────
-    for rank, r in enumerate(_disp[:50], 1):
-        _odds_fmt = f"+{int(r['over_odds'])}" if r.get("over_odds") and float(r["over_odds"]) > 0 else str(int(r["over_odds"])) if r.get("over_odds") else "—"
-        _bar_w = r["confidence"]
-        _bar_col = r["conf_color"]
-        _conf_pct = f"{r['confidence']}/100"
-        _ec_badge = ' <span style="color:#34d399;font-size:0.7rem;">✓ confirmed</span>' if r["edge_confirmed"] else ""
-        st.markdown(f"""
-<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;
-            padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-  <div style="color:#555;font-size:1.1rem;font-weight:700;min-width:28px;">#{rank}</div>
-  <div style="font-size:1.3rem;">{r['icon']}</div>
-  <div style="flex:1;min-width:160px;">
-    <div style="color:#e8e8f0;font-weight:600;font-size:0.95rem;">{r['player']}
-      <span style="color:#666;font-size:0.8rem;"> · {r['team']}</span>
-    </div>
-    <div style="color:#888;font-size:0.82rem;margin-top:2px;">
-      {r['market_lbl']} O{r['line']}{_ec_badge}
-    </div>
-  </div>
-  <div style="text-align:center;min-width:70px;">
-    <div style="color:#a78bfa;font-size:1.1rem;font-weight:700;">{_odds_fmt}</div>
-    <div style="color:#555;font-size:0.72rem;">odds</div>
-  </div>
-  <div style="text-align:center;min-width:70px;">
-    <div style="color:#34d399;font-size:1.1rem;font-weight:700;">{r['edge']:.1%}</div>
-    <div style="color:#555;font-size:0.72rem;">edge</div>
-  </div>
-  <div style="min-width:120px;">
-    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-      <span style="color:{_bar_col};font-size:0.8rem;font-weight:600;">{r['conf_label']}</span>
-      <span style="color:#888;font-size:0.78rem;">{_conf_pct}</span>
-    </div>
-    <div style="background:#2a2a3a;border-radius:4px;height:6px;overflow:hidden;">
-      <div style="width:{_bar_w}%;height:100%;background:{_bar_col};border-radius:4px;"></div>
-    </div>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-    if len(_disp) > 50:
-        st.caption(f"Showing top 50 of {len(_disp)} plays. Lower the confidence filter to see more.")
-
-
 def main():
     import os as _os
     _banner = _os.path.join(_os.path.dirname(__file__), "..", "static", "banner.png")
@@ -2410,9 +2245,6 @@ def main():
         st.markdown("## ⚙️ Settings")
         use_live = st.toggle("Live Odds (The Odds API)", value=bool(ODDS_API_KEY),
                              disabled=not bool(ODDS_API_KEY))
-
-
-
         st.divider()
         st.markdown("## 💰 Kelly Bankroll")
         bankroll = st.number_input("My Bankroll ($)", min_value=10.0, max_value=1000000.0,
@@ -2544,20 +2376,15 @@ def main():
                     for _line in _logged:
                         st.markdown(f"- {_line}")
 
-    # Build tab labels — prepend the cross-sport All-Plays view
+    # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = ["🌐 All Sports"] + sport_tab_labels + ["📈 CLV & ROI", "📊 Tracker"]
+    all_tab_labels = sport_tab_labels + ["📈 CLV & ROI", "📊 Tracker"]
     all_tabs = st.tabs(all_tab_labels)
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    # ── All-Sports cross-sport leaderboard (first tab) ────────────────────────
-    with all_tabs[0]:
-        _render_all_sports_tab(use_live, _allowed)
-
-    # ── Per-sport tabs (skip index 0 which is All Sports) ────────────────────
-    for i, (tab, sport) in enumerate(zip(all_tabs[1:-len(["📈 CLV & ROI", "📊 Tracker"])], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["📈 CLV & ROI", "📊 Tracker"])], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
@@ -2609,7 +2436,7 @@ RAPIDAPI_KEY=your_key_here
             else:
                 render_sport_tab(sport, use_live)
 
-    # CLV & ROI tab (second to last — unchanged regardless of tab count)
+    # CLV & ROI tab (second to last)
     with all_tabs[-2]:
         render_clv_tab()
 
