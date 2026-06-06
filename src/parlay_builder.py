@@ -349,6 +349,12 @@ def build_sgps(df: pd.DataFrame, min_odds: int = -300,
         ind_penalty = _independence_penalty(selected)
         combined_ev = sum(r.get("edge", 0) for r in selected) * ind_penalty
 
+        # SGP min combined edge filter — skip SGPs where the copula-adjusted
+        # combined edge is negative or negligible. No point betting a 3-leg SGP
+        # just because one leg has +2% if the other two drag it below zero.
+        if combined_ev <= 0.0:
+            continue
+
         odds_list = [r["over_odds"] for r in selected]
         payout = parlay_payout(odds_list)
 
@@ -432,6 +438,9 @@ def build_diverse_sgps(
             for _, selected in quick_scored[: n_per_size * 2]:
                 ind_penalty  = _independence_penalty(selected)
                 combined_ev  = sum(r.get("edge", 0) for r in selected) * ind_penalty
+                # Skip combos with non-positive combined edge
+                if combined_ev <= 0.0:
+                    continue
                 odds_list    = [r["over_odds"] for r in selected]
                 payout       = parlay_payout(odds_list)
                 corr_tax     = sgp_correlation_tax(selected, payout["combined_decimal"])

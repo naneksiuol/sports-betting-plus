@@ -251,6 +251,97 @@ def edge_rating(edge: float) -> str:
         return "❌ No Edge"
 
 
+def edge_confidence_score(
+    edge: float,
+    fair_est: float,
+    edge_confirmed: bool = False,
+    n_books: int = 1,
+    over_odds: float = -110,
+    clv_avg: float | None = None,
+) -> int:
+    """
+    Composite Edge Confidence Score: 0–100.
+
+    Combines five signals, each contributing up to 20 points:
+      1. Edge magnitude  — primary model signal (Power de-vig)
+      2. Fair probability — rewards realistic odds range, penalizes extreme longshots
+      3. NegBin agreement — both models point same direction (edge_confirmed)
+      4. Book coverage   — more books offering = more efficient, reliable line
+      5. CLV track record — historical proof the model has real edge
+
+    Returns integer 0–100 for easy display as a progress bar or rating.
+    """
+    score = 0.0
+
+    # 1. Edge magnitude (0–30 pts) — biggest signal
+    if edge >= 0.08:
+        score += 30
+    elif edge >= 0.05:
+        score += 24
+    elif edge >= 0.03:
+        score += 18
+    elif edge >= 0.015:
+        score += 12
+    elif edge >= 0.01:
+        score += 6
+    elif edge > 0:
+        score += 2
+
+    # 2. Fair probability / odds range (0–20 pts)
+    # Sweet spot: 35%–65% fair probability (realistic "chalk" range)
+    # Penalise extreme longshots (low fair) where variance overwhelms edge
+    if 0.40 <= fair_est <= 0.65:
+        score += 20
+    elif 0.30 <= fair_est < 0.40 or 0.65 < fair_est <= 0.75:
+        score += 14
+    elif 0.20 <= fair_est < 0.30 or 0.75 < fair_est <= 0.85:
+        score += 8
+    else:
+        score += 3  # extreme territory — high variance
+
+    # 3. Model agreement (0–20 pts) — Power de-vig AND NegBin both positive
+    if edge_confirmed and edge > 0:
+        score += 20
+    elif edge > 0:
+        score += 8  # only one model positive
+
+    # 4. Book coverage (0–15 pts) — more books = more liquid, tighter line
+    if n_books >= 2:
+        score += 15
+    elif n_books == 1:
+        score += 8
+
+    # 5. CLV history (0–15 pts) — proven track record
+    if clv_avg is not None:
+        if clv_avg >= 3.0:
+            score += 15
+        elif clv_avg >= 1.5:
+            score += 11
+        elif clv_avg >= 0.5:
+            score += 7
+        elif clv_avg >= 0.0:
+            score += 3
+        # Negative CLV adds 0 — punish bad history
+    else:
+        score += 5  # neutral — no history yet
+
+    return min(int(round(score)), 100)
+
+
+def confidence_label(score: int) -> tuple[str, str]:
+    """Return (label, hex_color) for a confidence score."""
+    if score >= 80:
+        return "🔥 Elite", "#00ff88"
+    elif score >= 65:
+        return "✅ Strong", "#52b788"
+    elif score >= 50:
+        return "🟡 Good", "#f9c74f"
+    elif score >= 35:
+        return "🟠 Marginal", "#f8961e"
+    else:
+        return "🔴 Weak", "#ff6060"
+
+
 # ── Closing Line Value (CLV) ──────────────────────────────────────────────────
 
 def closing_line_value(bet_odds: float, closing_odds: float) -> float:

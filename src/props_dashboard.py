@@ -421,6 +421,7 @@ def render_bet_tracker():
         st.markdown('<div class="section-header">➕ Log a Bet</div>', unsafe_allow_html=True)
         with st.form("log_bet_form", clear_on_submit=True):
             from edge_model import recommended_stake as _rec_stake, edge_rating as _edge_rating
+            from bet_tracker import get_clv_avg as _get_clv_avg
             sport = st.selectbox("Sport", [s for s in SPORTS_CONFIG if SPORTS_CONFIG[s]["status"] == "live"])
             player = st.text_input("Player", placeholder="e.g. Daniel Susac")
             prop = st.text_input("Prop", placeholder="e.g. 1+ Hits, Points O22.5")
@@ -431,8 +432,11 @@ def render_bet_tracker():
                                        help="Your fair probability estimate. Use Fair Est. from the table.")
             _bankroll = st.session_state.get("bankroll_input", 1000.0)
             _kmult = st.session_state.get("kelly_mult", 0.25)
-            _rec = _rec_stake(win_prob / 100, float(odds), _bankroll, _kmult)
-            st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% of bankroll) | EV: ${_rec['ev_on_stake']:+.2f} | Signal: {_edge_rating(win_prob/100 - abs(odds)/(abs(odds)+100))}")
+            # Wire real CLV history into dynamic Kelly — stake scales with proven track record
+            _clv_avg = _get_clv_avg(n_recent=30)
+            _rec = _rec_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
+            _clv_note = f" | CLV avg: {_clv_avg:+.1f}% (last 30)" if _clv_avg is not None else " | CLV: no history yet"
+            st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% · {_rec['kelly_multiplier']:.0%} Kelly) | EV: ${_rec['ev_on_stake']:+.2f}{_clv_note}")
             stake = st.number_input("Stake ($)", value=float(_rec["stake"]) or 10.0,
                                     step=1.0, min_value=0.5)
             book = st.text_input("Sportsbook", placeholder="DraftKings, FanDuel...")
@@ -1102,6 +1106,26 @@ def render_sport_tab(sport: str, use_live: bool):
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
 
+    # ── Pre-compute confidence scores for all filtered rows ──────────────────
+    from edge_model import edge_confidence_score as _conf_score, confidence_label as _conf_label
+    from bet_tracker import get_clv_avg as _get_clv_avg
+    _clv_avg_global = _get_clv_avg(n_recent=30)  # shared CLV history for all rows
+
+    def _row_confidence(row) -> int:
+        return _conf_score(
+            edge=float(row.get("edge", 0)),
+            fair_est=float(row.get("fair_est", 0.5)),
+            edge_confirmed=bool(row.get("edge_confirmed", False)),
+            n_books=int(row.get("n_books", 1)),
+            over_odds=float(row.get("over_odds", -110)),
+            clv_avg=_clv_avg_global,
+        )
+
+    if len(filtered) > 0:
+        filtered = filtered.copy()
+        filtered["confidence"] = filtered.apply(_row_confidence, axis=1)
+        filtered = filtered.sort_values(["confidence", "edge"], ascending=False)
+
     # ── KPIs ──
     st.markdown("### 📊 Board Overview")
     k1, k2, k3, k4 = st.columns(4)
@@ -1112,9 +1136,49 @@ def render_sport_tab(sport: str, use_live: bool):
               delta=f"{len(filtered)/len(df):.1%} of board" if len(df) else None)
     k3.metric("Avg Edge", f"{avg_edge:.2%}")
     if best is not None:
-        k4.metric("Best Play", best["player"], delta=f"+{best['edge']:.2%} edge")
+        best_conf = int(best.get("confidence", 0))
+        best_label, _ = _conf_label(best_conf)
+        k4.metric("Best Play", best["player"], delta=f"{best_label} · {best_conf}/100")
     else:
         k4.metric("Best Play", "—")
+
+    # ── Best Bet of the Day widget ────────────────────────────────────────────
+    if best is not None:
+        best_conf  = int(best.get("confidence", 0))
+        best_label, best_color = _conf_label(best_conf)
+        best_prop  = market_labels.get(best.get("market",""), best.get("market",""))
+        best_odds  = int(best.get("over_odds", 0))
+        best_odds_fmt = f"+{best_odds}" if best_odds > 0 else str(best_odds)
+        best_edge  = float(best.get("edge", 0))
+        best_fair  = float(best.get("fair_est", 0.5))
+        confirmed_badge = " ✅ Both models agree" if best.get("edge_confirmed") else ""
+        bar_pct = best_conf  # 0–100
+
+        st.markdown(f"""
+<div style="background:linear-gradient(135deg,rgba(0,255,136,0.07) 0%,rgba(0,212,255,0.07) 100%);
+            border:1px solid {best_color};border-radius:14px;padding:1.2rem 1.5rem;margin:0.8rem 0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+    <div>
+      <span style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:1px;">🏆 Best Bet of the Day</span><br>
+      <span style="font-size:1.3rem;font-weight:700;color:#fff;">{best['player']}</span>
+      <span style="font-size:0.95rem;color:#aaa;margin-left:0.5rem;">{best_prop} O{best.get('line','')} · {best_odds_fmt}</span>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-size:1.6rem;font-weight:800;color:{best_color};">{best_conf}</span>
+      <span style="font-size:0.8rem;color:#888;">/100</span><br>
+      <span style="font-size:0.8rem;color:{best_color};font-weight:600;">{best_label}</span>
+    </div>
+  </div>
+  <div style="margin-top:0.7rem;background:rgba(255,255,255,0.08);border-radius:6px;height:6px;overflow:hidden;">
+    <div style="width:{bar_pct}%;height:100%;background:linear-gradient(90deg,{best_color},{best_color}99);border-radius:6px;"></div>
+  </div>
+  <div style="margin-top:0.5rem;font-size:0.8rem;color:#aaa;">
+    Edge <b style="color:{best_color};">+{best_edge:.2%}</b> ·
+    Fair <b style="color:#fff;">{best_fair:.1%}</b> ·
+    Game: <b style="color:#ccc;">{best.get('team','')}</b>{confirmed_badge}
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     st.divider()
 
@@ -1205,9 +1269,14 @@ def render_sport_tab(sport: str, use_live: bool):
         display_df = filtered[base_cols].copy()
         display_df["market"] = display_df["market"].map(lambda k: market_labels.get(k, k))
 
-        # Kelly stake
+        # Confidence score (0–100) — already computed above, wire it in
+        if "confidence" in filtered.columns:
+            display_df["Conf"] = filtered["confidence"].apply(
+                lambda s: f"{int(s)}/100")
+
+        # Dynamic Kelly stake — uses real CLV history for sizing
         display_df["Kelly"] = filtered.apply(
-            lambda r: f"${recommended_stake(r['fair_est'], r['over_odds'], bankroll, kelly_mult)['stake']:.2f}", axis=1)
+            lambda r: f"${recommended_stake(r['fair_est'], r['over_odds'], bankroll, kelly_mult, clv_avg=_clv_avg_global)['stake']:.2f}", axis=1)
 
         # Edge signal
         display_df["Signal"] = filtered["edge"].apply(edge_rating)
@@ -1238,17 +1307,22 @@ def render_sport_tab(sport: str, use_live: bool):
         display_df["Sharp Line"] = filtered.apply(get_sharp, axis=1)
 
         # Injury status
-        has_nb = "NB Δ" in display_df.columns
+        has_nb   = "NB Δ" in display_df.columns
+        has_conf = "Conf" in display_df.columns
 
         if has_status and "status_label" in filtered.columns:
             display_df["Status"] = filtered["status_label"]
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
-                         "Book Implied", "Fair Est.", "Edge", "Kelly", "Signal", "Move", "Sharp Line",
+                         "Book Implied", "Fair Est.", "Edge",
+                         *(["Conf"] if has_conf else []),
+                         "Kelly", "Signal", "Move", "Sharp Line",
                          *(["NB Δ"] if has_nb else []),
                          "Status"]
         else:
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
-                         "Book Implied", "Fair Est.", "Edge", "Kelly", "Signal", "Move", "Sharp Line",
+                         "Book Implied", "Fair Est.", "Edge",
+                         *(["Conf"] if has_conf else []),
+                         "Kelly", "Signal", "Move", "Sharp Line",
                          *(["NB Δ"] if has_nb else [])]
 
         display_df.columns = col_names
