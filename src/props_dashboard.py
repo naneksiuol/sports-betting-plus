@@ -2411,36 +2411,7 @@ def main():
         use_live = st.toggle("Live Odds (The Odds API)", value=bool(ODDS_API_KEY),
                              disabled=not bool(ODDS_API_KEY))
 
-        # ── Auto-refresh ──
-        st.markdown("**⏱ Auto-Refresh**")
-        _ar_options = {"Off": 0, "5 min": 300, "10 min": 600, "15 min": 900, "30 min": 1800}
-        _ar_label = st.select_slider("Refresh interval", options=list(_ar_options.keys()), value="Off",
-                                     key="auto_refresh_interval")
-        _ar_secs = _ar_options[_ar_label]
-        if _ar_secs > 0:
-            import time as _t
-            _last = st.session_state.get("_last_refresh", _t.time())
-            _elapsed = _t.time() - _last
-            _remaining = max(0, _ar_secs - _elapsed)
-            st.caption(f"Next refresh in {int(_remaining//60)}m {int(_remaining%60)}s")
-            if _elapsed >= _ar_secs:
-                st.session_state["_last_refresh"] = _t.time()
-                # Clear parlay caches so they rebuild with fresh data
-                for _k in list(st.session_state.keys()):
-                    if _k.startswith("parlay_report_"):
-                        del st.session_state[_k]
-                st.session_state["_sports_preloaded"] = False
-                st.rerun()
-            else:
-                # Use browser-side meta-refresh so Python thread is never blocked.
-                # The browser reloads the page after _remaining seconds; Python stays free.
-                _refresh_secs = max(1, int(_remaining))
-                st.components.v1.html(
-                    f'<meta http-equiv="refresh" content="{_refresh_secs}">',
-                    height=0,
-                )
-        else:
-            st.session_state["_last_refresh"] = __import__("time").time()
+
 
         st.divider()
         st.markdown("## 💰 Kelly Bankroll")
