@@ -1,5 +1,5 @@
 """
-Real edge detection using proper de-vigging and Kelly criterion.
+Edge model v2 — real edge detection using proper de-vigging and Kelly criterion.
 
 Methods implemented:
   - Multiplicative / Shin / Power de-vig
