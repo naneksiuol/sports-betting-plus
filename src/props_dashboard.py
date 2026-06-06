@@ -314,6 +314,27 @@ def load_scraped_data(sport: str) -> pd.DataFrame:
     return scrape_props(sport)
 
 
+def preload_all_sports_parallel(use_live: bool = False):
+    """
+    Fire off all active sports data loads in parallel threads.
+    Since load_scraped_data / load_live_data are @st.cache_data, this warms the
+    cache so tab switches are instant instead of each sport loading sequentially.
+    Only runs once per session (tracked in session_state).
+    """
+    if st.session_state.get("_sports_preloaded"):
+        return
+    from concurrent.futures import ThreadPoolExecutor
+    live_sports = [s for s, cfg in SPORTS_CONFIG.items() if cfg.get("status", "live") == "live"]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(load_scraped_data, s) for s in live_sports]
+        for f in futures:
+            try:
+                f.result(timeout=20)
+            except Exception:
+                pass
+    st.session_state["_sports_preloaded"] = True
+
+
 @st.cache_data(ttl=3600)
 def load_static_mlb() -> pd.DataFrame:
     data_path = Path("data/hits_board-1.csv")
@@ -704,6 +725,246 @@ def render_bet_tracker():
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     else:
         st.info("📊 Charts will appear once you have settled bets.")
+
+
+# ── CLV & ROI Tab ─────────────────────────────────────────────────────────────
+def render_clv_tab():
+    """Full CLV & ROI analysis dashboard — measures if the model is actually working."""
+    from bet_tracker import load_bets, get_stats
+    import plotly.graph_objects as go
+    import plotly.express as px
+
+    st.markdown("## 📈 CLV & ROI Analysis")
+    st.caption("Closing Line Value (CLV) is the gold standard for measuring edge quality. Consistent positive CLV = real edge, not luck.")
+
+    bets = load_bets()
+    if not bets:
+        st.info("📭 No bets logged yet. Start logging bets in the Tracker tab to see CLV analysis.")
+        return
+
+    stats = get_stats()
+
+    # ── CLV Hero Metrics ──────────────────────────────────────────────────────
+    clv_bets = [b for b in bets if b.get("clv") is not None]
+    clv_vals = [float(b["clv"]) for b in clv_bets]
+    settled  = [b for b in bets if b.get("result") in ("win", "loss")]
+
+    avg_clv       = round(sum(clv_vals) / len(clv_vals), 2) if clv_vals else None
+    clv_pos_rate  = round(100 * sum(1 for c in clv_vals if c > 0) / len(clv_vals), 1) if clv_vals else None
+    model_edge    = stats.get("roi", 0.0)
+    expected_roi  = round(avg_clv * 0.85, 2) if avg_clv else None  # CLV → ROI conversion ~85%
+
+    h1, h2, h3, h4, h5 = st.columns(5)
+    clv_color = "#00ff88" if (avg_clv or 0) > 0 else "#ff6060"
+    h1.metric("Avg CLV", f"{avg_clv:+.2f}%" if avg_clv is not None else "—",
+              help="Average Closing Line Value. Positive = you consistently beat the closing market.")
+    h2.metric("CLV Positive Rate", f"{clv_pos_rate:.0f}%" if clv_pos_rate else "—",
+              help="% of bets where you beat the closing line. >50% = long-term edge.")
+    h3.metric("Bets with CLV", len(clv_bets))
+    h4.metric("Actual ROI", f"{model_edge:+.1f}%",
+              delta="live" if model_edge >= 0 else None)
+    h5.metric("CLV-Implied ROI", f"{expected_roi:+.1f}%" if expected_roi is not None else "—",
+              help="Estimated ROI from CLV (CLV × 0.85). Matches actual ROI if model is well-calibrated.")
+
+    st.divider()
+
+    # ── CLV Over Time (rolling) ────────────────────────────────────────────────
+    if clv_bets:
+        st.markdown("### 📉 CLV Trend Over Time")
+        clv_df = pd.DataFrame([
+            {"date": b["date"], "clv": float(b["clv"]), "sport": b.get("sport","?"), "player": b.get("player","?")}
+            for b in clv_bets
+        ])
+        clv_df = clv_df.sort_values("date")
+        clv_df["rolling_clv"] = clv_df["clv"].rolling(window=10, min_periods=1).mean()
+        clv_df["cumulative_clv"] = clv_df["clv"].cumsum()
+        clv_df["bet_num"] = range(1, len(clv_df) + 1)
+
+        col_l, col_r = st.columns(2)
+        with col_l:
+            fig_roll = go.Figure()
+            fig_roll.add_trace(go.Bar(
+                x=clv_df["bet_num"], y=clv_df["clv"],
+                name="CLV per bet",
+                marker_color=["rgba(0,255,136,0.5)" if c > 0 else "rgba(255,96,96,0.5)" for c in clv_df["clv"]],
+            ))
+            fig_roll.add_trace(go.Scatter(
+                x=clv_df["bet_num"], y=clv_df["rolling_clv"],
+                name="10-bet rolling avg", line=dict(color="#00d4ff", width=2),
+            ))
+            fig_roll.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+            fig_roll.update_layout(
+                title="CLV per Bet + 10-Bet Rolling Average",
+                xaxis_title="Bet #", yaxis_title="CLV (%)",
+                height=320, **PLOT_LAYOUT
+            )
+            st.plotly_chart(fig_roll, use_container_width=True)
+
+        with col_r:
+            fig_cum = go.Figure()
+            fig_cum.add_trace(go.Scatter(
+                x=clv_df["bet_num"], y=clv_df["cumulative_clv"],
+                name="Cumulative CLV",
+                fill="tozeroy",
+                line=dict(color="#a855f7", width=2),
+                fillcolor="rgba(168,85,247,0.15)",
+            ))
+            fig_cum.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+            fig_cum.update_layout(
+                title="Cumulative CLV (Edge Accumulation)",
+                xaxis_title="Bet #", yaxis_title="Cumulative CLV (%)",
+                height=320, **PLOT_LAYOUT
+            )
+            st.plotly_chart(fig_cum, use_container_width=True)
+
+    # ── CLV by Sport ──────────────────────────────────────────────────────────
+    if clv_bets:
+        st.divider()
+        st.markdown("### 🏆 Edge Quality by Sport & Market")
+        col_sp, col_mk = st.columns(2)
+
+        # By sport
+        with col_sp:
+            sp_clv = {}
+            for b in clv_bets:
+                sp = b.get("sport", "?")
+                sp_clv.setdefault(sp, []).append(float(b["clv"]))
+            sp_rows = [{"Sport": sp, "Avg CLV": round(sum(v)/len(v), 2), "Bets": len(v),
+                        "% Positive": round(100*sum(1 for x in v if x>0)/len(v), 0)}
+                       for sp, v in sp_clv.items() if len(v) >= 2]
+            sp_rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
+            if sp_rows:
+                fig_sp = px.bar(
+                    pd.DataFrame(sp_rows), x="Sport", y="Avg CLV",
+                    color="Avg CLV", color_continuous_scale=["#ff6060","#ffaa00","#00ff88"],
+                    title="Avg CLV by Sport", text="Avg CLV",
+                )
+                fig_sp.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
+                fig_sp.update_layout(height=300, coloraxis_showscale=False, **PLOT_LAYOUT)
+                st.plotly_chart(fig_sp, use_container_width=True)
+
+        # By market
+        with col_mk:
+            mk_clv = {}
+            for b in clv_bets:
+                # Extract market from prop string (e.g. "pitcher_strikeouts O6.5")
+                prop_str = b.get("prop", "")
+                mkt = prop_str.split(" ")[0] if prop_str else "unknown"
+                # Clean up common suffixes
+                for suffix in [" O", " U", " [", "\n"]:
+                    mkt = mkt.split(suffix)[0]
+                mk_clv.setdefault(mkt, []).append(float(b["clv"]))
+            mk_rows = [{"Market": mk.replace("_", " ").title(), "Avg CLV": round(sum(v)/len(v), 2), "Bets": len(v)}
+                       for mk, v in mk_clv.items() if len(v) >= 3]
+            mk_rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
+            if mk_rows:
+                fig_mk = px.bar(
+                    pd.DataFrame(mk_rows[:12]), x="Market", y="Avg CLV",
+                    color="Avg CLV", color_continuous_scale=["#ff6060","#ffaa00","#00ff88"],
+                    title="Avg CLV by Market (min 3 bets)", text="Avg CLV",
+                )
+                fig_mk.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
+                fig_mk.update_layout(height=300, coloraxis_showscale=False, **PLOT_LAYOUT)
+                st.plotly_chart(fig_mk, use_container_width=True)
+
+    # ── Win Rate vs Expected ──────────────────────────────────────────────────
+    if settled:
+        st.divider()
+        st.markdown("### 🎯 Actual vs Expected Win Rate")
+        st.caption("If the model is well-calibrated, actual win rate should track expected win rate over time.")
+
+        # Per-sport win rate vs expected
+        sp_wr = {}
+        for b in settled:
+            sp = b.get("sport", "?")
+            win = b.get("result") == "win"
+            sp_wr.setdefault(sp, {"wins": 0, "total": 0, "exp_wins": 0.0})
+            sp_wr[sp]["total"] += 1
+            if win:
+                sp_wr[sp]["wins"] += 1
+
+        wr_rows = []
+        for sp, d in sp_wr.items():
+            if d["total"] < 3:
+                continue
+            actual_wr = round(100 * d["wins"] / d["total"], 1)
+            wr_rows.append({"Sport": sp, "Actual Win%": actual_wr,
+                             "Bets": d["total"], "Wins": d["wins"]})
+
+        if wr_rows:
+            wr_df = pd.DataFrame(wr_rows)
+            fig_wr = go.Figure()
+            fig_wr.add_trace(go.Bar(
+                x=wr_df["Sport"], y=wr_df["Actual Win%"],
+                name="Actual Win %",
+                marker_color="rgba(0,255,136,0.7)",
+                text=[f"{v:.1f}%" for v in wr_df["Actual Win%"]],
+                textposition="outside",
+            ))
+            fig_wr.add_hline(y=50, line_dash="dot", line_color="rgba(255,255,255,0.4)",
+                             annotation_text="50% baseline")
+            fig_wr.update_layout(
+                title="Win Rate by Sport (settled bets)",
+                yaxis_title="Win %", height=300, **PLOT_LAYOUT
+            )
+            st.plotly_chart(fig_wr, use_container_width=True)
+
+    # ── Bankroll Growth Chart ──────────────────────────────────────────────────
+    if settled:
+        st.divider()
+        st.markdown("### 💰 Bankroll Growth")
+
+        bk_df = pd.DataFrame([
+            {"date": b["date"], "profit": float(b.get("profit") or 0), "sport": b.get("sport","?")}
+            for b in sorted(settled, key=lambda x: x["date"])
+        ])
+        bk_df["cumulative"] = bk_df["profit"].cumsum()
+        bk_df["bet_num"] = range(1, len(bk_df) + 1)
+
+        fig_bk = go.Figure()
+        fig_bk.add_trace(go.Scatter(
+            x=bk_df["bet_num"], y=bk_df["cumulative"],
+            mode="lines+markers",
+            name="Bankroll P&L",
+            line=dict(color="#00ff88", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(0,255,136,0.08)",
+            marker=dict(size=4),
+        ))
+        fig_bk.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+        fig_bk.update_layout(
+            title="Cumulative P&L Over All Bets",
+            xaxis_title="Bet #", yaxis_title="Profit ($)",
+            height=350, **PLOT_LAYOUT
+        )
+        st.plotly_chart(fig_bk, use_container_width=True)
+
+        # Drawdown chart
+        bk_df["peak"] = bk_df["cumulative"].cummax()
+        bk_df["drawdown"] = bk_df["cumulative"] - bk_df["peak"]
+        max_dd = bk_df["drawdown"].min()
+        current_dd = bk_df["drawdown"].iloc[-1]
+
+        d1, d2 = st.columns(2)
+        d1.metric("Max Drawdown", f"${max_dd:.2f}", delta=f"Current: ${current_dd:.2f}",
+                  delta_color="inverse")
+        d2.metric("Peak P&L", f"${bk_df['peak'].iloc[-1]:.2f}")
+
+    # ── CLV Data Table ────────────────────────────────────────────────────────
+    if clv_bets:
+        st.divider()
+        st.markdown("### 📋 CLV Breakdown (All Bets with CLV Data)")
+        clv_table = pd.DataFrame([{
+            "Date":   b["date"],
+            "Sport":  b.get("sport", "?"),
+            "Player": b.get("player", "?"),
+            "Prop":   b.get("prop", "?"),
+            "Odds":   b.get("odds"),
+            "Result": b.get("result", "pending"),
+            "CLV":    f"{float(b['clv']):+.2f}%",
+            "Profit": f"${float(b.get('profit') or 0):+.2f}",
+        } for b in sorted(clv_bets, key=lambda x: x["date"], reverse=True)])
+        st.dataframe(clv_table, use_container_width=True, hide_index=True)
 
 
 # ── Sport Tab ─────────────────────────────────────────────────────────────────
@@ -1208,13 +1469,25 @@ def render_sport_tab(sport: str, use_live: bool):
                 if pkey in report["parlays"]:
                     p = report["parlays"][pkey]
                     pout = p["payout"]
+                    ev  = p.get("ev", {})
+                    ev_pct = ev.get("ev_pct", 0)
+                    ev_color = "#00ff88" if ev_pct > 0 else "#ff6060"
+                    ev_sign  = "+" if ev_pct > 0 else ""
                     st.metric("Payout", f"${pout['payout']:.2f}",
                               delta=f"{pout['american_odds']} odds")
+                    if ev:
+                        st.markdown(
+                            f"<span style='font-size:0.8rem;color:{ev_color};font-weight:600;'>"
+                            f"EV {ev_sign}{ev_pct:.1f}% · Win Prob {ev.get('win_prob',0):.1%}"
+                            f"</span>",
+                            unsafe_allow_html=True
+                        )
                     for j, leg in enumerate(p["legs"], 1):
                         prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
                         edge_pct = f"+{leg.get('edge', 0):.1%}"
                         odds_fmt = f"+{int(leg['over_odds'])}" if leg['over_odds'] > 0 else str(int(leg['over_odds']))
-                        st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_fmt}) *{edge_pct}*")
+                        confirmed = "✅" if leg.get("edge_confirmed") else ""
+                        st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_fmt}) *{edge_pct}* {confirmed}")
                         st.caption(f"   {leg['team']}")
                     if st.button(f"📝 Log {n}-Leg Parlay to Tracker",
                                  key=f"log_parlay_{sport}_{n}", use_container_width=True):
@@ -1530,15 +1803,20 @@ def main():
         st.divider()
         st.markdown("## 🔍 Filters")
 
+    # ── Parallel preload: warm all sport caches in background threads ──
+    # This is the key performance upgrade — all sports load simultaneously so
+    # tab switches are instant instead of each one waiting ~4s sequentially.
+    preload_all_sports_parallel(use_live)
+
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["📊 Tracker"]
+    all_tab_labels = sport_tab_labels + ["📈 CLV & ROI", "📊 Tracker"]
     all_tabs = st.tabs(all_tab_labels)
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-1], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["📈 CLV & ROI", "📊 Tracker"])], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
@@ -1590,6 +1868,11 @@ RAPIDAPI_KEY=your_key_here
             else:
                 render_sport_tab(sport, use_live)
 
+    # CLV & ROI tab (second to last)
+    with all_tabs[-2]:
+        render_clv_tab()
+
+    # Tracker tab (last)
     with all_tabs[-1]:
         if _tiers and not _tiers.can(_current_tier, "tracker"):
             st.markdown("""
