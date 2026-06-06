@@ -1032,6 +1032,55 @@ def render_clv_tab():
                   delta_color="inverse")
         d2.metric("Peak P&L", f"${bk_df['peak'].iloc[-1]:.2f}")
 
+    # ── Market Edge Calibration (item 5) ──────────────────────────────────────
+    if settled:
+        st.divider()
+        st.markdown("### 🔬 Market Edge Calibration")
+        st.caption("Which markets is the model actually finding real edge in? Sorts by CLV to reveal where the signal is real vs noise.")
+
+        mkt_data: dict = {}
+        for b in settled:
+            prop_str = b.get("prop", "")
+            mkt_raw  = prop_str.split(" ")[0].strip() if prop_str else "unknown"
+            for suf in [" O", " U", " [", "[", "\n", "(", ")"]:
+                mkt_raw = mkt_raw.split(suf)[0]
+            mkt_raw = mkt_raw.replace("_", " ").title()
+
+            win   = b.get("result") == "win"
+            clv_v = b.get("clv") or b.get("opening_clv")
+            if mkt_raw not in mkt_data:
+                mkt_data[mkt_raw] = {"wins": 0, "total": 0, "clv_vals": [], "profit": 0.0}
+            mkt_data[mkt_raw]["total"] += 1
+            if win: mkt_data[mkt_raw]["wins"] += 1
+            if clv_v is not None: mkt_data[mkt_raw]["clv_vals"].append(float(clv_v))
+            mkt_data[mkt_raw]["profit"] += float(b.get("profit") or 0)
+
+        cal_rows = []
+        for mkt, d in mkt_data.items():
+            if d["total"] < 3: continue
+            wr      = round(100 * d["wins"] / d["total"], 1)
+            avg_clv = round(sum(d["clv_vals"]) / len(d["clv_vals"]), 2) if d["clv_vals"] else None
+            roi_pct = round(d["profit"] / max(d["total"], 1), 2)
+            verdict = ("✅ Trust" if (avg_clv or 0) >= 1.5 and wr >= 50
+                       else "🟡 Monitor" if (avg_clv or 0) >= 0
+                       else "🔴 Avoid")
+            cal_rows.append({
+                "Market":   mkt,
+                "Bets":     d["total"],
+                "Win %":    f"{wr}%",
+                "Avg CLV":  f"{avg_clv:+.2f}%" if avg_clv is not None else "—",
+                "Avg P&L":  f"${roi_pct:+.2f}",
+                "Verdict":  verdict,
+            })
+
+        if cal_rows:
+            cal_rows.sort(key=lambda r: float(r["Avg CLV"].replace("%","").replace("—","0") or "0"), reverse=True)
+            cal_df = pd.DataFrame(cal_rows)
+            st.dataframe(cal_df, use_container_width=True, hide_index=True)
+            st.caption("Min 3 bets per market. Avg P&L = average profit per bet. CLV data may be partial for recent bets.")
+        else:
+            st.info("Need 3+ settled bets per market for calibration data.")
+
     # ── CLV Data Table ────────────────────────────────────────────────────────
     if clv_bets:
         st.divider()
@@ -1102,11 +1151,27 @@ def render_sport_tab(sport: str, use_live: bool):
             steam_alerts = []
             movement_map = {}
         else:
-            steam_alerts = [m for m in record_snapshot(df).values() if m.get("is_steam")]
+            _snap_data    = record_snapshot(df)
+            steam_alerts  = [m for m in _snap_data.values() if m.get("is_steam")]
+            # Opening line alerts: any move ≥ 10 pts since first snapshot
+            line_alerts   = [m for m in _snap_data.values()
+                             if not m.get("is_steam") and abs(m.get("diff", 0)) >= 10]
+
             if steam_alerts:
-                st.warning(f"🔥 **{len(steam_alerts)} Steam Move(s) Detected!** Lines moving fast — sharp money likely.")
+                st.warning(f"🔥 **{len(steam_alerts)} Steam Move(s) Detected!** Sharp money moving fast.")
                 for alert in steam_alerts[:3]:
                     st.markdown(f"- **{alert['player']}** {alert['market']} | {alert['prev_odds']:+d} → {alert['curr_odds']:+d} ({format_movement(alert['diff'])})")
+
+            if line_alerts:
+                _dir_word = lambda d: ("📈 moved up" if d > 0 else "📉 moved down")
+                with st.expander(f"📊 {len(line_alerts)} Line Movement(s) Since Opening", expanded=False):
+                    for mv in sorted(line_alerts, key=lambda x: abs(x.get("diff",0)), reverse=True)[:10]:
+                        diff = mv.get("diff", 0)
+                        st.markdown(
+                            f"**{mv['player']}** — {mv['market']} O{mv.get('line','')} "
+                            f"| Opening: **{mv['prev_odds']:+d}** → Now: **{mv['curr_odds']:+d}** "
+                            f"({_dir_word(diff)} {abs(diff)} pts)"
+                        )
                 # Only auto-push alerts that haven't been sent yet this session
                 try:
                     from discord_bot import is_configured as dc_ok, send_steam_alert as dc_steam
@@ -1182,6 +1247,9 @@ def render_sport_tab(sport: str, use_live: bool):
         edge_threshold = st.slider("Min Edge", min_value=-0.05, max_value=0.12,
                                    value=0.0, step=0.005, format="%.3f",
                                    key=f"edge_slider_{sport}")
+        confirmed_only = st.toggle("✅ Confirmed plays only",
+                                   value=False, key=f"confirmed_{sport}",
+                                   help="Show only plays where Power de-vig AND NegBin both agree on edge direction. Highest conviction plays.")
         all_teams = sorted(df["team"].dropna().unique())
         selected_teams = st.multiselect("Matchups", options=all_teams, default=all_teams,
                                         key=f"teams_{sport}")
@@ -1199,11 +1267,13 @@ def render_sport_tab(sport: str, use_live: bool):
             st.rerun()
 
     cache_key = f"filtered_{sport}"
+    _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
     filtered = df[
         (df["market"].isin(selected_markets))
         & (df["edge"] >= edge_threshold)
         & (df["team"].isin(selected_teams))
         & (df["player"].str.contains(player_search, case=False, na=False))
+        & _conf_mask
     ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
@@ -1392,6 +1462,34 @@ def render_sport_tab(sport: str, use_live: bool):
             display_df["NB Δ"] = filtered["negbin_delta"].apply(_nb_label)
             display_df["NB Δ"].name = "NB Δ"
 
+        # ── Line Shopping (item 2) — FD vs DK odds + Best Book tag ──
+        if "fd_odds" in filtered.columns and "dk_odds" in filtered.columns:
+            def _fmt_book_odds(v):
+                if pd.isna(v) or v is None: return "—"
+                return f"+{int(v)}" if v > 0 else str(int(v))
+
+            def _best_book(row):
+                fd  = row.get("fd_odds")
+                dk  = row.get("dk_odds")
+                if pd.isna(fd) or fd is None: return "DK" if (not pd.isna(dk) and dk is not None) else "—"
+                if pd.isna(dk) or dk is None: return "FD"
+                return "FD" if fd >= dk else "DK"   # higher american = better payout
+
+            def _book_spread(row):
+                fd = row.get("fd_odds"); dk = row.get("dk_odds")
+                if pd.isna(fd) or pd.isna(dk) or fd is None or dk is None: return "—"
+                diff = int(fd) - int(dk)
+                if diff == 0: return "Equal"
+                return f"FD {diff:+d}" if diff > 0 else f"DK {-diff:+d}"
+
+            display_df["FD"] = filtered.apply(lambda r: _fmt_book_odds(r.get("fd_odds")), axis=1)
+            display_df["DK"] = filtered.apply(lambda r: _fmt_book_odds(r.get("dk_odds")), axis=1)
+            display_df["Bet At"] = filtered.apply(_best_book, axis=1)
+            display_df["Spread"] = filtered.apply(_book_spread, axis=1)
+            _has_line_shop = True
+        else:
+            _has_line_shop = False
+
         # Line movement
         def get_move(row):
             key = snapshot_key(row["player"], row["market"], row["line"])
@@ -1412,19 +1510,25 @@ def render_sport_tab(sport: str, use_live: bool):
         has_nb   = "NB Δ" in display_df.columns
         has_conf = "Conf" in display_df.columns
 
+        _shop_cols = (["FD", "DK", "Bet At", "Spread"] if _has_line_shop else [])
+
         if has_status and "status_label" in filtered.columns:
             display_df["Status"] = filtered["status_label"]
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
-                         "Kelly", "Signal", "Move", "Sharp Line",
+                         "Kelly", "Signal",
+                         *_shop_cols,
+                         "Move", "Sharp Line",
                          *(["NB Δ"] if has_nb else []),
                          "Status"]
         else:
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
-                         "Kelly", "Signal", "Move", "Sharp Line",
+                         "Kelly", "Signal",
+                         *_shop_cols,
+                         "Move", "Sharp Line",
                          *(["NB Δ"] if has_nb else [])]
 
         display_df.columns = col_names
@@ -1597,16 +1701,31 @@ def render_sport_tab(sport: str, use_live: bool):
         stake = st.number_input("Stake per parlay ($)", min_value=1.0, max_value=10000.0,
                                 value=10.0, step=5.0, key=f"stake_{sport}")
 
-        # SGP pool: same market/team/player filters as the main board, but
-        # no edge-threshold cut so SGP legs aren't too thin. The builder
-        # applies its own -0.03 floor internally.
+        # SGP pool: same market/team/player filters, no edge-threshold cut.
         sgp_pool = df[
             (df["market"].isin(selected_markets))
             & (df["team"].isin(selected_teams if selected_teams else df["team"].unique()))
             & (df["player"].str.contains(player_search, case=False, na=False) if player_search else True)
         ].copy()
 
-        report = build_parlay_report(filtered, stake=stake, full_df=sgp_pool)
+        # ── Lazy SGP cache (item 6) ──────────────────────────────────────────
+        # build_diverse_sgps is combinatorial — O(C(12,n)) per game.
+        # Cache by a hash of the pool data so it only recomputes when odds change,
+        # not on every sidebar interaction.
+        import hashlib as _hl
+
+        @st.cache_data(ttl=300, show_spinner="⚡ Building parlays & SGPs…")
+        def _cached_parlay_report(_df_hash: str, _pool_hash: str, _stake: float) -> dict:
+            return build_parlay_report(filtered, stake=_stake, full_df=sgp_pool)
+
+        def _df_hash(d: pd.DataFrame) -> str:
+            try:
+                key = str(round(d["edge"].sum(), 6)) + str(len(d)) + str(d["over_odds"].sum() if "over_odds" in d.columns else 0)
+                return _hl.md5(key.encode()).hexdigest()[:12]
+            except Exception:
+                return "0"
+
+        report = _cached_parlay_report(_df_hash(filtered), _df_hash(sgp_pool), stake)
 
         st.markdown("#### 🏆 Top 10 Best Edge Candidates")
         st.caption("Highest edge plays within -300 to +300 odds — sorted by edge, best value first.")
