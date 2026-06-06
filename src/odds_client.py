@@ -342,21 +342,22 @@ def _fetch_props_for_sport(sport_key: str, markets: list[str], max_events: int =
 
 
 def get_props(sport: str) -> pd.DataFrame:
-    """Fetch all props for a given sport. Falls back to scraper if API quota exhausted."""
+    """Fetch all props for a given sport. Falls back to scraper if API unavailable or quota exhausted."""
     cfg = SPORTS_CONFIG.get(sport)
     if not cfg:
         raise ValueError(f"Unknown sport: {sport}. Choose from {list(SPORTS_CONFIG)}")
 
-    # Try official API first
-    if not quota_exhausted():
+    api_ok = bool(_api_key()) and not quota_exhausted()
+
+    if api_ok:
         try:
             df = _fetch_props_for_sport(cfg["key"], cfg["markets"])
             if not df.empty:
                 return df
         except Exception:
-            pass
+            pass  # fall through to scraper
 
-    # Fallback: scrape Action Network
+    # Fallback: scrape Action Network (no API key needed)
     try:
         from scraper import scrape_props
         df = scrape_props(sport)
@@ -393,6 +394,8 @@ def get_remaining_requests() -> dict:
 
 
 def quota_exhausted() -> bool:
+    if not _api_key():
+        return True
     return get_remaining_requests().get("requests_remaining", 1) == 0
 
 

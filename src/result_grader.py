@@ -10,49 +10,62 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 
+# Force UTF-8 output so emoji print statements don't crash on Windows (cp1252)
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 sys.path.insert(0, str(Path(__file__).parent))
 from bet_tracker import load_bets, update_result, save_bets
 
 MLB_API = "https://statsapi.mlb.com/api/v1"
 
 # Prop label → (stat_group, stat_field)
+# IMPORTANT: longer/more-specific keys must come BEFORE shorter ones that are
+# substrings of them (e.g. "pitcher_hits_allowed" before "hits"), because
+# _parse_prop iterates in order and returns on first match.
 PROP_STAT_MAP = {
-    # ── Batting ──
-    "batter_hits":          ("batting", "hits"),
-    "1+ hits":              ("batting", "hits"),
-    "hits":                 ("batting", "hits"),
-    "batter_home_runs":     ("batting", "homeRuns"),
-    "home run":             ("batting", "homeRuns"),
-    "hr":                   ("batting", "homeRuns"),
-    "batter_total_bases":   ("batting", "totalBases"),
-    "total bases":          ("batting", "totalBases"),
-    "tb":                   ("batting", "totalBases"),
-    "batter_rbis":          ("batting", "rbi"),
-    "rbis":                 ("batting", "rbi"),
-    "rbi":                  ("batting", "rbi"),
-    "batter_runs_scored":   ("batting", "runs"),
-    "runs scored":          ("batting", "runs"),
-    "runs":                 ("batting", "runs"),
-    "batter_stolen_bases":  ("batting", "stolenBases"),
-    "stolen bases":         ("batting", "stolenBases"),
-    "sb":                   ("batting", "stolenBases"),
-    "batter_strikeouts":    ("batting", "strikeOuts"),
-    "hitter strikeouts":    ("batting", "strikeOuts"),
-    # ── Pitching ──
-    "pitcher_strikeouts":   ("pitching", "strikeOuts"),
-    "pitcher ks":           ("pitching", "strikeOuts"),
-    "ks":                   ("pitching", "strikeOuts"),
-    "pitcher_outs_recorded":("pitching", "outs"),
-    "outs recorded":        ("pitching", "outs"),
-    "outs":                 ("pitching", "outs"),
-    "pitcher_saves":        ("pitching", "saves"),
-    "saves":                ("pitching", "saves"),
-    "sv":                   ("pitching", "saves"),
+    # ── Pitching (specific — must precede batting "hits", "runs", etc.) ──
     "pitcher_hits_allowed": ("pitching", "hits"),
     "hits allowed":         ("pitching", "hits"),
+    "pitcher_strikeouts":   ("pitching", "strikeOuts"),
+    "pitcher ks":           ("pitching", "strikeOuts"),
+    "pitcher_outs_recorded":("pitching", "outs"),
+    "outs recorded":        ("pitching", "outs"),
+    "pitcher_saves":        ("pitching", "saves"),
     "pitcher_walks":        ("pitching", "baseOnBalls"),
+    "pitcher walks":        ("pitching", "baseOnBalls"),
+    # ── Batting ──
+    "batter_hits":          ("batting", "hits"),
+    "batter_home_runs":     ("batting", "homeRuns"),
+    "batter_total_bases":   ("batting", "totalBases"),
+    "batter_rbis":          ("batting", "rbi"),
+    "batter_runs_scored":   ("batting", "runs"),
+    "batter_stolen_bases":  ("batting", "stolenBases"),
+    "batter_strikeouts":    ("batting", "strikeOuts"),
+    "batter hits runs rbis":("batting", "hits"),   # composite — grade on hits component
+    "1+ hits":              ("batting", "hits"),
+    "home run":             ("batting", "homeRuns"),
+    "total bases":          ("batting", "totalBases"),
+    "stolen bases":         ("batting", "stolenBases"),
+    "runs scored":          ("batting", "runs"),
+    "hitter strikeouts":    ("batting", "strikeOuts"),
+    "hits+runs+rbis":       ("batting", "hits"),
+    "hits":                 ("batting", "hits"),
+    "rbis":                 ("batting", "rbi"),
+    "rbi":                  ("batting", "rbi"),
+    "runs":                 ("batting", "runs"),
+    "saves":                ("pitching", "saves"),
     "walks":                ("pitching", "baseOnBalls"),
+    "outs":                 ("pitching", "outs"),
+    "ks":                   ("pitching", "strikeOuts"),
+    "sb":                   ("batting", "stolenBases"),
+    "tb":                   ("batting", "totalBases"),
+    "hr":                   ("batting", "homeRuns"),
     "bb":                   ("pitching", "baseOnBalls"),
+    "sv":                   ("pitching", "saves"),
 }
 
 

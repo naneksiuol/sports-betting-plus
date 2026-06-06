@@ -308,6 +308,12 @@ def load_live_data(sport: str) -> tuple:
     return df, source
 
 
+@st.cache_data(ttl=300, show_spinner="🔵 Scraping Action Network...")
+def load_scraped_data(sport: str) -> pd.DataFrame:
+    from scraper import scrape_props
+    return scrape_props(sport)
+
+
 @st.cache_data(ttl=3600)
 def load_static_mlb() -> pd.DataFrame:
     data_path = Path("data/hits_board-1.csv")
@@ -328,13 +334,24 @@ def load_static_mlb() -> pd.DataFrame:
 
 
 def load_data(sport: str, use_live: bool):
+    # Try live API first if toggle is on and key is present
     if use_live and ODDS_API_KEY:
         try:
             df, source = load_live_data(sport)
             if not df.empty:
                 return df, source
         except Exception as e:
-            st.warning(f"Live odds unavailable ({e}). Falling back to static board.")
+            st.warning(f"Live odds unavailable ({e}). Falling back to scraped data.")
+
+    # Always try scraper as fallback (no API key needed)
+    try:
+        df = load_scraped_data(sport)
+        if not df.empty:
+            return df, "scraped"
+    except Exception:
+        pass
+
+    # Last resort: static CSV for MLB hits only
     if sport == "MLB":
         return load_static_mlb(), "static"
     return pd.DataFrame(), "unavailable"
