@@ -65,7 +65,11 @@ else:
     except ImportError:
         pass
 
-# ── Dark Glassmorphism CSS ─────────────────────────────────────────────────────
+# ── Design System — matches email (send_daily_bets.py) exactly ────────────────
+# Palette:  bg #0f0f13  card #1a1a24  border #2a2a3a
+#           purple #a78bfa  green #34d399  text #e8e8f0  muted #888
+# Sport gradients: MLB green · NBA blue · WNBA red · NHL blue
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -74,188 +78,236 @@ st.markdown("""
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
 .stApp {
-    background: linear-gradient(135deg, #0a0a1a 0%, #0d0d2b 40%, #0a0f1e 100%);
-    background-attachment: fixed;
+    background: #0f0f13;
 }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #06061a 0%, #0a0a24 100%) !important;
-    border-right: 1px solid rgba(0,255,136,0.15) !important;
+    background: #0d0d18 !important;
+    border-right: 1px solid #2a2a3a !important;
 }
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
-    color: #00ff88 !important;
+    color: #a78bfa !important;
     font-family: 'Space Grotesk', sans-serif !important;
 }
 
 /* ── Main title ── */
 h1 {
     font-family: 'Space Grotesk', sans-serif !important;
-    font-weight: 700 !important;
-    background: linear-gradient(90deg, #00ff88, #00d4ff, #a855f7);
+    font-weight: 800 !important;
+    background: linear-gradient(90deg, #a78bfa 0%, #7c3aed 50%, #4f46e5 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    font-size: 2.6rem !important;
+    font-size: 2.4rem !important;
+    letter-spacing: -0.5px !important;
 }
 h2, h3 {
     font-family: 'Space Grotesk', sans-serif !important;
     color: #e8e8f0 !important;
 }
 
-/* ── Glass card effect for metric blocks ── */
+/* ── Metric cards — matches email stat-chip style ── */
 [data-testid="metric-container"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(0,255,136,0.2) !important;
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
     border-radius: 16px !important;
     padding: 1.2rem !important;
-    backdrop-filter: blur(10px) !important;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 [data-testid="metric-container"]:hover {
-    border-color: rgba(0,255,136,0.5) !important;
-    box-shadow: 0 0 20px rgba(0,255,136,0.1) !important;
+    border-color: #3a3a5a !important;
+    box-shadow: 0 4px 24px rgba(167,139,250,0.1) !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
     font-family: 'Space Grotesk', sans-serif !important;
     font-size: 1.8rem !important;
-    font-weight: 700 !important;
-    color: #00ff88 !important;
+    font-weight: 800 !important;
+    color: #a78bfa !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricLabel"] {
-    color: #8888aa !important;
-    font-size: 0.8rem !important;
+    color: #666 !important;
+    font-size: 0.75rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
 }
 [data-testid="metric-container"] [data-testid="stMetricDelta"] {
-    font-size: 0.85rem !important;
+    font-size: 0.82rem !important;
 }
 
-/* ── Tabs ── */
+/* ── Tabs — pill style matching email nav ── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: rgba(255,255,255,0.03) !important;
-    border-radius: 12px !important;
-    padding: 4px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    gap: 4px !important;
+    background: #13131f !important;
+    border-radius: 14px !important;
+    padding: 5px !important;
+    border: 1px solid #2a2a3a !important;
+    gap: 3px !important;
 }
 [data-testid="stTabs"] [data-baseweb="tab"] {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     font-family: 'Space Grotesk', sans-serif !important;
     font-weight: 500 !important;
-    color: #8888aa !important;
+    color: #666 !important;
     transition: all 0.2s ease !important;
+    padding: 0.45rem 1rem !important;
 }
 [data-testid="stTabs"] [aria-selected="true"] {
-    background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,212,255,0.1)) !important;
-    color: #00ff88 !important;
-    border: 1px solid rgba(0,255,136,0.3) !important;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 2px 12px rgba(124,58,237,0.4) !important;
 }
 
-/* ── Dataframe ── */
+/* ── Dataframe — card border style ── */
 [data-testid="stDataFrame"] {
-    border: 1px solid rgba(0,255,136,0.15) !important;
-    border-radius: 12px !important;
+    border: 1px solid #2a2a3a !important;
+    border-radius: 14px !important;
     overflow: hidden !important;
+    background: #1a1a24 !important;
 }
 
-/* ── Buttons ── */
+/* ── Buttons — matches email CTA style ── */
 .stButton > button {
-    background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,212,255,0.1)) !important;
-    border: 1px solid rgba(0,255,136,0.3) !important;
+    background: #1a1a24 !important;
+    border: 1px solid #3a3a5a !important;
     border-radius: 10px !important;
-    color: #00ff88 !important;
+    color: #a78bfa !important;
     font-family: 'Space Grotesk', sans-serif !important;
     font-weight: 600 !important;
     transition: all 0.2s ease !important;
 }
 .stButton > button:hover {
-    background: linear-gradient(135deg, rgba(0,255,136,0.3), rgba(0,212,255,0.2)) !important;
-    border-color: rgba(0,255,136,0.6) !important;
-    box-shadow: 0 0 20px rgba(0,255,136,0.2) !important;
+    background: linear-gradient(135deg, #7c3aed22, #4f46e522) !important;
+    border-color: #7c3aed !important;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.25) !important;
     transform: translateY(-1px) !important;
+    color: #c4b5fd !important;
+}
+/* Primary (type="primary") buttons — email's gradient CTA */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+    box-shadow: 0 2px 12px rgba(124,58,237,0.4) !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #6d28d9, #4338ca) !important;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.55) !important;
+    color: #fff !important;
 }
 
 /* ── Download button ── */
 [data-testid="stDownloadButton"] > button {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.15) !important;
-    color: #aaaacc !important;
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
+    color: #888 !important;
 }
 
 /* ── Selectbox / multiselect / input ── */
 [data-baseweb="select"], [data-baseweb="input"], [data-baseweb="textarea"] {
-    background: rgba(255,255,255,0.04) !important;
-    border-color: rgba(0,255,136,0.2) !important;
+    background: #1a1a24 !important;
+    border-color: #2a2a3a !important;
     border-radius: 8px !important;
+    color: #e8e8f0 !important;
 }
 
 /* ── Slider ── */
 [data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
-    background: #00ff88 !important;
+    background: #a78bfa !important;
 }
 
-/* ── Expander ── */
+/* ── Expander — card style ── */
 [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(0,255,136,0.15) !important;
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
+    border-radius: 14px !important;
+}
+[data-testid="stExpander"] summary {
+    color: #e8e8f0 !important;
+}
+
+/* ── Divider — subtle, matching email footer line ── */
+hr { border-color: #2a2a3a !important; }
+
+/* ── Sidebar toggle buttons (market filter pills) ── */
+[data-testid="stSidebar"] .stButton > button {
+    font-size: 0.75rem !important;
+    padding: 0.3rem 0.6rem !important;
+    border-radius: 20px !important;
+    font-weight: 500 !important;
+    background: #13131f !important;
+    border-color: #2a2a3a !important;
+    color: #888 !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: #a78bfa !important;
+    color: #a78bfa !important;
+    box-shadow: none !important;
+}
+
+/* ── Info / Warning / Error boxes ── */
+[data-testid="stAlert"] {
+    background: #1a1a24 !important;
+    border: 1px solid #2a2a3a !important;
     border-radius: 12px !important;
 }
 
-/* ── Divider ── */
-hr { border-color: rgba(0,255,136,0.1) !important; }
-
-/* ── Market toggle buttons in sidebar ── */
-[data-testid="stSidebar"] .stButton > button {
-    font-size: 0.75rem !important;
-    padding: 0.3rem 0.5rem !important;
-    border-radius: 20px !important;
-    font-weight: 500 !important;
-}
-[data-testid="stSidebar"] .stButton > button:has(div > p:first-child) {
-    min-height: 2rem !important;
-}
-
-/* ── Custom components ── */
+/* ── Custom components — all updated to match email tokens ── */
 .glass-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(0,255,136,0.2);
+    background: #1a1a24;
+    border: 1px solid #2a2a3a;
     border-radius: 16px;
     padding: 1.5rem;
-    backdrop-filter: blur(10px);
     margin-bottom: 1rem;
 }
+
+/* AI analysis box — email card style with purple left accent */
 .ai-box {
-    background: linear-gradient(135deg, rgba(0,255,136,0.05) 0%, rgba(0,212,255,0.05) 100%);
-    border: 1px solid rgba(0,255,136,0.3);
-    border-left: 4px solid #00ff88;
-    color: #e0e0f0;
+    background: #13131f;
+    border: 1px solid #2a2a3a;
+    border-left: 4px solid #a78bfa;
+    color: #e8e8f0;
     padding: 1.2rem;
     border-radius: 12px;
     font-size: 0.95rem;
     line-height: 1.7;
 }
+
+/* Badge system — matches email _edge_badge() exactly */
 .gold-badge {
-    background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.1));
-    border: 1px solid rgba(255,215,0,0.4);
-    border-radius: 8px;
-    padding: 0.3rem 0.7rem;
-    color: #ffd700;
-    font-weight: 600;
-    font-size: 0.85rem;
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #2e2510;
+    border: 1px solid #ffc53d33;
+    color: #ffc53d;
+    font-weight: 700;
+    font-size: 0.82rem;
 }
 .green-badge {
-    background: rgba(0,255,136,0.1);
-    border: 1px solid rgba(0,255,136,0.3);
-    border-radius: 8px;
-    padding: 0.3rem 0.7rem;
-    color: #00ff88;
-    font-weight: 600;
-    font-size: 0.85rem;
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #1a3a1a;
+    border: 1px solid #34d39933;
+    color: #34d399;
+    font-weight: 700;
+    font-size: 0.82rem;
 }
+.purple-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #1e1428;
+    border: 1px solid #a78bfa33;
+    color: #a78bfa;
+    font-weight: 700;
+    font-size: 0.82rem;
+}
+
+/* Stat row + chips — mirrors email _stat_chip() */
 .stat-row {
     display: flex;
     gap: 1rem;
@@ -263,36 +315,62 @@ hr { border-color: rgba(0,255,136,0.1) !important; }
     margin-bottom: 1rem;
 }
 .stat-chip {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 0.25rem 0.75rem;
+    background: #1a1a24;
+    border: 1px solid #2a2a3a;
+    border-radius: 14px;
+    padding: 0.3rem 0.8rem;
     font-size: 0.8rem;
-    color: #aaaacc;
+    color: #888;
 }
-.win-chip { border-color: rgba(0,255,136,0.4); color: #00ff88; background: rgba(0,255,136,0.08); }
-.loss-chip { border-color: rgba(255,60,60,0.4); color: #ff6060; background: rgba(255,60,60,0.08); }
-.pending-chip { border-color: rgba(255,215,0,0.4); color: #ffd700; background: rgba(255,215,0,0.08); }
+.win-chip  { border-color: #34d39944; color: #34d399; background: #0d2018; }
+.loss-chip { border-color: #ff6060aa; color: #ff6060; background: #1e0d0d; }
+.pending-chip { border-color: #ffc53d44; color: #ffc53d; background: #1e1a0a; }
+
+/* Section header — uppercase label like email section headers */
 .section-header {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #00ff88;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #666;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     margin-bottom: 0.5rem;
+}
+
+/* Sport banner — matches email sport section gradient header */
+.sport-banner-mlb  { background: linear-gradient(135deg,#1a472a 0%,#2d6a4f 100%); }
+.sport-banner-nba  { background: linear-gradient(135deg,#0a3161 0%,#1d4e8f 100%); }
+.sport-banner-wnba { background: linear-gradient(135deg,#7b1a1a 0%,#c8102e 100%); }
+.sport-banner-nhl  { background: linear-gradient(135deg,#003087 0%,#0057b8 100%); }
+.sport-banner {
+    border-radius: 16px 16px 0 0;
+    padding: 20px 24px 18px;
+    margin-bottom: 0;
+}
+
+/* Payout hero card — matches email _payout_hero() */
+.payout-hero {
+    background: linear-gradient(135deg,#141420 0%,#1e1e2e 100%);
+    border: 1px solid #3a3a5a;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Plotly dark theme ──────────────────────────────────────────────────────────
+# ── Plotly dark theme — matches email bg/card palette ─────────────────────────
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(255,255,255,0.02)",
-    font_color="#aaaacc",
+    plot_bgcolor="#13131f",
+    font_color="#888",
     font_family="Inter",
-    xaxis=dict(gridcolor="rgba(255,255,255,0.05)", zerolinecolor="rgba(255,255,255,0.1)"),
-    yaxis=dict(gridcolor="rgba(255,255,255,0.05)", zerolinecolor="rgba(255,255,255,0.1)"),
+    xaxis=dict(gridcolor="#2a2a3a", zerolinecolor="#3a3a5a"),
+    yaxis=dict(gridcolor="#2a2a3a", zerolinecolor="#3a3a5a"),
 )
 
 from odds_client import SPORTS_CONFIG
@@ -989,8 +1067,32 @@ def render_sport_tab(sport: str, use_live: bool):
     allowed_markets = set(cfg["market_labels"].keys())
     df = df[df["market"].isin(allowed_markets)].copy()
 
-    badge = {"live": "🟢 Live (Odds API)", "scraped": "🔵 Scraped (Action Network)", "static": "🟡 Static CSV"}.get(data_source, "🟡 Static")
-    st.caption(f"Data: {badge} · {len(df)} props loaded · Refreshes every 5 min")
+    # ── Sport gradient banner — matches email sport section header exactly ──
+    _SPORT_BANNER_META = {
+        "MLB":  {"gradient": "linear-gradient(135deg,#1a472a 0%,#2d6a4f 100%)", "accent": "#52b788", "icon": "⚾"},
+        "NBA":  {"gradient": "linear-gradient(135deg,#0a3161 0%,#1d4e8f 100%)", "accent": "#4dabf7", "icon": "🏀"},
+        "WNBA": {"gradient": "linear-gradient(135deg,#7b1a1a 0%,#c8102e 100%)", "accent": "#ff8fa3", "icon": "🏀"},
+        "NHL":  {"gradient": "linear-gradient(135deg,#003087 0%,#0057b8 100%)", "accent": "#74c0fc", "icon": "🏒"},
+    }
+    _smeta  = _SPORT_BANNER_META.get(sport, {"gradient":"linear-gradient(135deg,#1e1e2e,#2a2a4e)","accent":"#a78bfa","icon":"🎯"})
+    _src_dot = {"live": "🟢", "scraped": "🔵", "static": "🟡"}.get(data_source, "⚪")
+    _src_lbl = {"live": "Live · Odds API", "scraped": "Scraped · Action Network", "static": "Static CSV"}.get(data_source, data_source)
+    st.markdown(f"""
+<div style="background:{_smeta['gradient']};border-radius:16px 16px 0 0;
+            padding:20px 24px 16px;margin-bottom:0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:800;
+                   color:#fff;letter-spacing:-0.5px;">{_smeta['icon']} {sport}</span>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-size:12px;color:rgba(255,255,255,0.65);">{_src_dot} {_src_lbl}</span><br>
+      <span style="font-size:12px;color:rgba(255,255,255,0.5);">{len(df)} props · refreshes every 5 min</span>
+    </div>
+  </div>
+</div>
+<div style="height:1px;background:#2a2a3a;margin-bottom:1rem;"></div>
+""", unsafe_allow_html=True)
 
     # ── Line movement snapshot + steam alerts ──
     try:
@@ -1544,18 +1646,29 @@ def render_sport_tab(sport: str, use_live: bool):
                     p = report["parlays"][pkey]
                     pout = p["payout"]
                     ev  = p.get("ev", {})
-                    ev_pct = ev.get("ev_pct", 0)
-                    ev_color = "#00ff88" if ev_pct > 0 else "#ff6060"
-                    ev_sign  = "+" if ev_pct > 0 else ""
-                    st.metric("Payout", f"${pout['payout']:.2f}",
-                              delta=f"{pout['american_odds']} odds")
-                    if ev:
-                        st.markdown(
-                            f"<span style='font-size:0.8rem;color:{ev_color};font-weight:600;'>"
-                            f"EV {ev_sign}{ev_pct:.1f}% · Win Prob {ev.get('win_prob',0):.1%}"
-                            f"</span>",
-                            unsafe_allow_html=True
-                        )
+                    ev_pct  = ev.get("ev_pct", 0)
+                    ev_sign = "+" if ev_pct >= 0 else ""
+                    ev_col  = "#34d399" if ev_pct > 0 else "#ff6060"
+                    win_prob = ev.get("win_prob", 0)
+                    # Payout hero card — mirrors email _payout_hero()
+                    st.markdown(f"""
+<div style="background:linear-gradient(135deg,#141420 0%,#1e1e2e 100%);
+            border:1px solid #3a3a5a;border-radius:12px;padding:14px 18px;
+            margin-bottom:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+  <div>
+    <p style="margin:0;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:1px;">Combined Odds</p>
+    <p style="margin:2px 0 0;color:#a78bfa;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;">{pout['american_odds']}</p>
+  </div>
+  <div style="flex:1;">
+    <p style="margin:0;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:1px;">Payout on ${pout['stake']:.0f}</p>
+    <p style="margin:2px 0 0;color:#34d399;font-size:20px;font-weight:800;">${pout['payout']:.2f}</p>
+  </div>
+  <div style="text-align:right;">
+    <p style="margin:0;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:1px;">EV</p>
+    <p style="margin:2px 0 0;color:{ev_col};font-size:16px;font-weight:700;">{ev_sign}{ev_pct:.1f}%</p>
+    <p style="margin:0;color:#555;font-size:10px;">Win {win_prob:.1%}</p>
+  </div>
+</div>""", unsafe_allow_html=True)
                     for j, leg in enumerate(p["legs"], 1):
                         prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
                         edge_pct = f"+{leg.get('edge', 0):.1%}"
@@ -1847,8 +1960,25 @@ def main():
     if _os.path.exists(_banner):
         st.image(_banner, use_container_width=True)
     else:
-        st.title("🎯 Sports Betting Plus Bot")
-        st.markdown('<p style="color:#8888aa;margin-top:-1rem;font-size:0.95rem;">Multi-Sport Player Props · Live Value Dashboard · Sharp Bettor Tools</p>', unsafe_allow_html=True)
+        st.markdown("""
+<div style="text-align:center;padding:36px 0 28px;">
+  <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
+              border-radius:14px;padding:12px 22px;margin-bottom:16px;">
+    <span style="color:#fff;font-size:22px;font-weight:900;letter-spacing:-0.5px;">
+      Sports Betting+
+    </span>
+  </div>
+  <h1 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:800;
+             background:linear-gradient(90deg,#a78bfa,#7c3aed,#4f46e5);
+             -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+             background-clip:text;letter-spacing:-0.5px;">
+    Daily Props Dashboard
+  </h1>
+  <p style="color:#666;font-size:0.9rem;margin:6px 0 0;">
+    Multi-Sport Player Props &nbsp;·&nbsp; Live Value Detection &nbsp;·&nbsp; Sharp Bettor Tools
+  </p>
+</div>
+""", unsafe_allow_html=True)
 
     with st.sidebar:
         import os as _os
@@ -1859,7 +1989,12 @@ def main():
         elif _os.path.exists(_banner_sb):
             st.image(_banner_sb, use_container_width=True)
         else:
-            st.markdown("## 🎯 Sports Betting Plus Bot")
+            st.markdown("""
+<div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border-radius:12px;
+            padding:10px 14px;margin-bottom:4px;text-align:center;">
+  <span style="color:#fff;font-size:16px;font-weight:900;letter-spacing:-0.3px;">Sports Betting+</span>
+</div>
+""", unsafe_allow_html=True)
         st.divider()
         st.markdown("## ⚙️ Settings")
         use_live = st.toggle("Live Odds (The Odds API)", value=bool(ODDS_API_KEY),
@@ -1963,7 +2098,20 @@ RAPIDAPI_KEY=your_key_here
             render_bet_tracker()
 
     st.divider()
-    st.markdown('<p style="text-align:center;color:#555577;font-size:0.8rem;">Sports Betting Plus Bot · Live odds via The Odds API · AI by Groq · Always bet responsibly 🎯</p>', unsafe_allow_html=True)
+    st.markdown("""
+<div style="text-align:center;padding:28px 0 8px;border-top:1px solid #2a2a3a;margin-top:24px;">
+  <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
+              border-radius:10px;padding:8px 16px;margin-bottom:12px;">
+    <span style="color:#fff;font-size:14px;font-weight:800;letter-spacing:-0.3px;">Sports Betting+</span>
+  </div>
+  <p style="color:#333;font-size:11px;margin:4px 0 2px;">
+    Live odds via The Odds API &nbsp;·&nbsp; AI analysis by Groq &nbsp;·&nbsp; Sharp data via Action Network
+  </p>
+  <p style="color:#262630;font-size:11px;margin:0;">
+    Always bet responsibly. Past performance does not guarantee future results.
+  </p>
+</div>
+""", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
