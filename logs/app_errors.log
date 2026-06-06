@@ -1,0 +1,12 @@
+2026-06-06 18:22:32.552 No ASGI app assignments found in C:\Users\kenan\sports-betting-plus\src\props_dashboard.py
+2026-06-06 18:22:32.946 Filtered 49 packages down to 1 candidates for component scanning
+2026-06-06 18:22:32.953 Scanning 1 candidate packages for component manifests using 1 worker threads
+2026-06-06 18:22:33.300 Found 0 component manifests total
+2026-06-06 18:22:33.305 No asset roots to watch
+2026-06-06 18:22:33.310 File watching not started
+2026-06-06 18:22:33.315 Starting new event loop for server
+2026-06-06 18:22:33.321 Starting server...
+2026-06-06 18:22:33.455 Starting uvicorn server on 0.0.0.0:8503
+2026-06-06 18:22:33.530 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
+2026-06-06 18:22:33.531 Uvicorn server started on 0.0.0.0:8503
+2026-06-06 18:22:34.408 Setting up signal handler
