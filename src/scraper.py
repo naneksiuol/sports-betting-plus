@@ -363,16 +363,18 @@ def scrape_props(sport: str) -> pd.DataFrame:
                             continue
                 fair_est = min(fair_est, 0.99)
 
-                # Apply Negative Binomial overdispersion correction.
-                # NegBin models Var > Mean (common in sports props), giving more
-                # accurate tail probabilities than Shin alone.
+                # NegBin correction is a supplementary signal — useful when we have
+                # an independent count model.  Applied to a devigged line alone it
+                # over-corrects (especially for rare events like HRs with r=2),
+                # pulling fair_est below book_implied and generating false negatives.
+                # Keep it as a reference column; Shin-devig is the primary signal.
                 from edge_model import negbin_fair_prob, MARKET_DISPERSION, DEFAULT_DISPERSION
                 r_disp = MARKET_DISPERSION.get(market, DEFAULT_DISPERSION)
                 fair_est_nb = negbin_fair_prob(line_val, fair_est, r_disp)
 
-                # Primary edge uses NegBin-corrected fair prob
-                edge    = round(fair_est_nb - best_over_implied, 4)
-                edge_shin = round(fair_est - best_over_implied, 4)  # kept for reference
+                # Primary edge: Shin devig vs best available over line
+                edge         = round(fair_est - best_over_implied, 4)
+                edge_negbin  = round(fair_est_nb - best_over_implied, 4)
 
                 rows.append({
                     "player":           player_name,
@@ -381,10 +383,10 @@ def scrape_props(sport: str) -> pd.DataFrame:
                     "line":             line_val,
                     "over_odds":        round(best_over_odds),
                     "book_implied":     round(best_over_implied, 4),
-                    "fair_est":         round(fair_est_nb, 4),   # NegBin-corrected
-                    "fair_est_shin":    round(fair_est, 4),       # Shin-only (reference)
-                    "edge":             edge,
-                    "edge_shin":        edge_shin,
+                    "fair_est":         round(fair_est, 4),       # Shin-only (primary)
+                    "fair_est_negbin":  round(fair_est_nb, 4),    # NegBin-corrected (reference)
+                    "edge":             edge,                      # Shin-based (primary)
+                    "edge_negbin":      edge_negbin,               # NegBin-based (reference)
                     "negbin_delta":     round(fair_est_nb - fair_est, 4),
                     "n_books":          len(fd_dk_odds),
                     "books":            book_tag,
@@ -399,6 +401,6 @@ def scrape_props(sport: str) -> pd.DataFrame:
     df = df[df["player"] != "Unknown"]
     df = df.drop_duplicates(subset=["player", "market", "line"])
     cols = ["player", "team", "market", "line", "over_odds",
-            "book_implied", "fair_est", "fair_est_shin", "edge", "edge_shin",
+            "book_implied", "fair_est", "fair_est_negbin", "edge", "edge_negbin",
             "negbin_delta", "n_books", "books", "fd_odds", "dk_odds"]
     return df[[c for c in cols if c in df.columns]]

@@ -1,16 +1,16 @@
 """
-Fetches MLB game results from the official MLB Stats API (free, no key needed)
-and automatically grades pending bets in the tracker.
+Auto-grades pending bets using free public stat APIs.
+Supported sports: MLB, NBA, WNBA, NHL.
 """
 
 import requests
 import json
 import re
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 
-# Force UTF-8 output so emoji print statements don't crash on Windows (cp1252)
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -21,13 +21,18 @@ sys.path.insert(0, str(Path(__file__).parent))
 from bet_tracker import load_bets, update_result, save_bets
 
 MLB_API = "https://statsapi.mlb.com/api/v1"
+NHL_API = "https://api-web.nhle.com/v1"
+NBA_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://www.nba.com",
+    "Accept": "application/json",
+    "x-nba-stats-origin": "stats",
+    "x-nba-stats-token": "true",
+}
 
-# Prop label → (stat_group, stat_field)
-# IMPORTANT: longer/more-specific keys must come BEFORE shorter ones that are
-# substrings of them (e.g. "pitcher_hits_allowed" before "hits"), because
-# _parse_prop iterates in order and returns on first match.
-PROP_STAT_MAP = {
-    # ── Pitching (specific — must precede batting "hits", "runs", etc.) ──
+# ── MLB market → (stat_group, stat_field) ─────────────────────────────────────
+# Longer/more-specific keys MUST come before substrings of them.
+MLB_PROP_STAT_MAP = {
     "pitcher_hits_allowed": ("pitching", "hits"),
     "hits allowed":         ("pitching", "hits"),
     "pitcher_strikeouts":   ("pitching", "strikeOuts"),
@@ -37,7 +42,6 @@ PROP_STAT_MAP = {
     "pitcher_saves":        ("pitching", "saves"),
     "pitcher_walks":        ("pitching", "baseOnBalls"),
     "pitcher walks":        ("pitching", "baseOnBalls"),
-    # ── Batting ──
     "batter_hits":          ("batting", "hits"),
     "batter_home_runs":     ("batting", "homeRuns"),
     "batter_total_bases":   ("batting", "totalBases"),
@@ -45,7 +49,7 @@ PROP_STAT_MAP = {
     "batter_runs_scored":   ("batting", "runs"),
     "batter_stolen_bases":  ("batting", "stolenBases"),
     "batter_strikeouts":    ("batting", "strikeOuts"),
-    "batter hits runs rbis":("batting", "hits"),   # composite — grade on hits component
+    "batter hits runs rbis":("batting", "hits"),
     "1+ hits":              ("batting", "hits"),
     "home run":             ("batting", "homeRuns"),
     "total bases":          ("batting", "totalBases"),
@@ -68,72 +72,127 @@ PROP_STAT_MAP = {
     "sv":                   ("pitching", "saves"),
 }
 
+# ── NBA/WNBA market → stat field or callable ──────────────────────────────────
+# stat dict keys (from NBA stats API): pts, reb, ast, fg3m, stl, blk, tov
+NBA_PROP_STAT_MAP = {
+    "player_points":                    "pts",
+    "player_rebounds":                  "reb",
+    "player_assists":                   "ast",
+    "player_threes":                    "fg3m",
+    "player_steals":                    "stl",
+    "player_blocks":                    "blk",
+    "player_turnovers":                 "tov",
+    "player_points_rebounds_assists":   lambda s: s.get("pts", 0) + s.get("reb", 0) + s.get("ast", 0),
+    "player_points_rebounds":           lambda s: s.get("pts", 0) + s.get("reb", 0),
+    "player_points_assists":            lambda s: s.get("pts", 0) + s.get("ast", 0),
+    "player_rebounds_assists":          lambda s: s.get("reb", 0) + s.get("ast", 0),
+    "player_steals_blocks":             lambda s: s.get("stl", 0) + s.get("blk", 0),
+    "player_double_double":             lambda s: int(s.get("pts", 0) >= 10 and s.get("reb", 0) >= 10
+                                                      or s.get("pts", 0) >= 10 and s.get("ast", 0) >= 10
+                                                      or s.get("reb", 0) >= 10 and s.get("ast", 0) >= 10),
+    "pra":  lambda s: s.get("pts", 0) + s.get("reb", 0) + s.get("ast", 0),
+    "pts":  "pts",
+    "reb":  "reb",
+    "ast":  "ast",
+    "stl":  "stl",
+    "blk":  "blk",
+    "tov":  "tov",
+}
 
-def _get_games_for_date(date_str: str) -> list[dict]:
-    """Return list of Final games for a given date (YYYY-MM-DD)."""
-    r = requests.get(f"{MLB_API}/schedule",
-                     params={"sportId": 1, "date": date_str},
-                     timeout=15)
-    r.raise_for_status()
-    dates = r.json().get("dates", [])
-    if not dates:
-        return []
-    return [g for g in dates[0].get("games", [])
-            if g.get("status", {}).get("abstractGameState") == "Final"]
+# ── NHL market → stat field or callable ──────────────────────────────────────
+# stat dict keys: goals, assists, shots, saves, pim, blockedShots, hits
+NHL_PROP_STAT_MAP = {
+    "player_goals":         "goals",
+    "player_assists":       "assists",
+    "player_shots_on_goal": "shots",
+    "player_saves":         "saves",
+    "player_blocked_shots": "blockedShots",
+    "player_hits":          "hits",
+    "player_points":        lambda s: s.get("goals", 0) + s.get("assists", 0),
+    "goals":    "goals",
+    "assists":  "assists",
+    "shots":    "shots",
+    "saves":    "saves",
+}
+
+# Combined map for prop parsing — all sports
+PROP_STAT_MAP = {**MLB_PROP_STAT_MAP}  # legacy alias for MLB-only callers
 
 
-def _get_player_stats(game_pk: int) -> dict[str, dict]:
-    """
-    Returns dict keyed by normalized player name → stats dict.
-    Stats dict has 'batting' and 'pitching' sub-dicts.
-    """
-    r = requests.get(f"{MLB_API}/game/{game_pk}/boxscore", timeout=15)
-    r.raise_for_status()
-    bs = r.json()
-    stats = {}
-    for side in ("home", "away"):
-        players = bs.get("teams", {}).get(side, {}).get("players", {})
-        for pid, p in players.items():
-            name = p.get("person", {}).get("fullName", "")
-            if not name:
-                continue
-            batting = p.get("stats", {}).get("batting", {})
-            pitching = p.get("stats", {}).get("pitching", {})
-            # Calculate totalBases if not present
-            if batting and "totalBases" not in batting:
-                batting["totalBases"] = (
-                    batting.get("hits", 0)
-                    + batting.get("doubles", 0)
-                    + batting.get("triples", 0) * 2
-                    + batting.get("homeRuns", 0) * 3
-                )
-            stats[_normalize(name)] = {
-                "batting": batting,
-                "pitching": pitching,
-                "full_name": name,
-            }
-    return stats
+# ── Name normalisation ────────────────────────────────────────────────────────
+
+_SUFFIX_RE  = re.compile(r"\b(jr\.?|sr\.?|ii|iii|iv)\s*$", re.I)
+_HYPHEN_RE  = re.compile(r"-")
+_APOS_RE    = re.compile(r"['\.]")
 
 
 def _normalize(name: str) -> str:
-    return name.lower().strip()
+    nfd = unicodedata.normalize("NFD", name)
+    ascii_approx = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    s = ascii_approx.lower().strip()
+    s = _SUFFIX_RE.sub("", s).strip()
+    s = _HYPHEN_RE.sub(" ", s)
+    s = _APOS_RE.sub("", s)
+    return " ".join(s.split())
 
 
-def _parse_prop(prop_str: str) -> tuple[str | None, float | None]:
+def _fuzzy_match_player(name_norm: str, all_stats: dict, threshold: float = 0.82) -> dict | None:
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        def _score(a: str, b: str) -> float:
+            ts = _fuzz.token_sort_ratio(a, b) / 100.0
+            pr = _fuzz.partial_ratio(a, b) / 100.0
+            last_a = a.split()[-1] if a.split() else ""
+            last_b = b.split()[-1] if b.split() else ""
+            ln = 1.0 if last_a == last_b else (_fuzz.ratio(last_a, last_b) / 100.0)
+            return 0.5 * ts + 0.3 * pr + 0.2 * ln
+    except ImportError:
+        from difflib import SequenceMatcher
+        def _score(a: str, b: str) -> float:
+            ts = SequenceMatcher(None, a, b).ratio()
+            last_a = a.split()[-1] if a.split() else ""
+            last_b = b.split()[-1] if b.split() else ""
+            ln = SequenceMatcher(None, last_a, last_b).ratio()
+            return 0.6 * ts + 0.4 * ln
+
+    best_key, best_score = None, 0.0
+    for key in all_stats:
+        s = _score(name_norm, key)
+        if s > best_score:
+            best_score = s
+            best_key = key
+
+    if best_key and best_score >= threshold:
+        return all_stats[best_key]
+    return None
+
+
+def _parse_prop(prop_str: str, sport: str = "MLB") -> tuple[str | None, float | None]:
     """
-    Parse prop string like 'pitcher_hits_allowed O5.5 [SGP]'
-    Returns (market_key, line) or (None, None).
+    Parse 'batter_hits O0.5 [SGP]' → (market_key, line).
+    Tries sport-specific map first, then falls back to all maps.
+    Keys are checked longest-first so 'player_points_rebounds_assists'
+    matches before its substring 'player_points'.
     """
     prop_lower = prop_str.lower()
-
-    # Extract line from O{number}
     line_match = re.search(r'o([\d.]+)', prop_lower)
     line = float(line_match.group(1)) if line_match else None
 
-    # Match market
-    for key in PROP_STAT_MAP:
-        if key in prop_lower:
-            return key, line
+    sport_maps = {
+        "MLB":  MLB_PROP_STAT_MAP,
+        "NBA":  NBA_PROP_STAT_MAP,
+        "WNBA": NBA_PROP_STAT_MAP,
+        "NHL":  NHL_PROP_STAT_MAP,
+    }
+    ordered_maps = [sport_maps.get(sport.upper(), {})]
+    for s, m in sport_maps.items():
+        if s != sport.upper():
+            ordered_maps.append(m)
+
+    for stat_map in ordered_maps:
+        for key in sorted(stat_map.keys(), key=len, reverse=True):
+            if key in prop_lower:
+                return key, line
 
     return None, line
 
@@ -143,107 +202,358 @@ def _grade_bet(actual_val: float, line: float) -> str:
         return "win"
     elif actual_val < line:
         return "loss"
-    else:
-        return "push"
+    return "push"
 
+
+# ── MLB stats ─────────────────────────────────────────────────────────────────
+
+def _get_mlb_games(date_str: str) -> list[dict]:
+    r = requests.get(f"{MLB_API}/schedule",
+                     params={"sportId": 1, "date": date_str}, timeout=15)
+    r.raise_for_status()
+    dates = r.json().get("dates", [])
+    if not dates:
+        return []
+    return [g for g in dates[0].get("games", [])
+            if g.get("status", {}).get("abstractGameState") == "Final"]
+
+
+def _get_mlb_player_stats(game_pk: int) -> dict:
+    r = requests.get(f"{MLB_API}/game/{game_pk}/boxscore", timeout=15)
+    r.raise_for_status()
+    bs = r.json()
+    stats = {}
+    for side in ("home", "away"):
+        for pid, p in bs.get("teams", {}).get(side, {}).get("players", {}).items():
+            name = p.get("person", {}).get("fullName", "")
+            if not name:
+                continue
+            batting  = p.get("stats", {}).get("batting", {})
+            pitching = p.get("stats", {}).get("pitching", {})
+            if batting and "totalBases" not in batting:
+                batting["totalBases"] = (
+                    batting.get("hits", 0) + batting.get("doubles", 0)
+                    + batting.get("triples", 0) * 2 + batting.get("homeRuns", 0) * 3
+                )
+            stats[_normalize(name)] = {"batting": batting, "pitching": pitching}
+    return stats
+
+
+def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, list[str]]:
+    games = _get_mlb_games(date_str)
+    if not games:
+        return 0, [f"No final MLB games found for {date_str}"]
+
+    all_stats: dict = {}
+    for g in games:
+        try:
+            all_stats.update(_get_mlb_player_stats(g["gamePk"]))
+        except Exception as e:
+            print(f"  ⚠️  MLB game {g['gamePk']}: {e}")
+    print(f"  MLB: loaded {len(all_stats)} players from {len(games)} games")
+
+    graded, skipped = 0, []
+    for bet in bets:
+        player_norm = _normalize(bet["player"])
+        market_key, line = _parse_prop(bet.get("prop", ""), "MLB")
+        if bet.get("line") is not None and line is None:
+            line = float(bet["line"])
+        if not market_key or line is None:
+            skipped.append(f"{bet['player']} — unparseable: {bet.get('prop')}")
+            continue
+
+        stat_cfg = MLB_PROP_STAT_MAP.get(market_key)
+        if stat_cfg is None:
+            skipped.append(f"{bet['player']} — unknown market: {market_key}")
+            continue
+
+        pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
+        if not pstats:
+            skipped.append(f"{bet['player']} — not found in boxscores")
+            continue
+
+        stat_group, stat_field = stat_cfg
+        val = pstats.get(stat_group, {}).get(stat_field)
+        if val is None:
+            skipped.append(f"{bet['player']} — stat {stat_group}.{stat_field} not found")
+            continue
+
+        result = _grade_bet(float(val), float(line))
+        if not dry_run:
+            update_result(bet["id"], result)
+        emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+        print(f"  {emoji} [MLB] {bet['player']} | actual={val} vs O{line} → {result.upper()}")
+        graded += 1
+
+    return graded, skipped
+
+
+# ── NBA / WNBA stats ──────────────────────────────────────────────────────────
+
+def _get_nba_player_stats(date_str: str, league: str = "00") -> dict:
+    """
+    Fetch player stats for all final NBA/WNBA games on date_str.
+    league: '00' = NBA, '10' = WNBA
+    Returns dict: normalized_name → stat dict (pts, reb, ast, fg3m, stl, blk, tov)
+    """
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    date_fmt = dt.strftime("%m/%d/%Y")
+
+    scoreboard = requests.get(
+        "https://stats.nba.com/stats/scoreboardv2",
+        params={"DayOffset": "0", "GameDate": date_fmt, "LeagueID": league},
+        headers=NBA_HEADERS, timeout=15,
+    )
+    scoreboard.raise_for_status()
+    sb_data = scoreboard.json()
+
+    game_ids = []
+    for rs in sb_data.get("resultSets", []):
+        if rs["name"] == "GameHeader":
+            headers = rs["headers"]
+            gid_idx = headers.index("GAME_ID")
+            status_idx = headers.index("GAME_STATUS_ID")
+            for row in rs["rowSet"]:
+                if row[status_idx] == 3:  # 3 = Final
+                    game_ids.append(row[gid_idx])
+
+    all_stats: dict = {}
+    for gid in game_ids:
+        try:
+            box = requests.get(
+                "https://stats.nba.com/stats/boxscoretraditionalv2",
+                params={"GameID": gid, "StartPeriod": 0, "EndPeriod": 10,
+                        "RangeType": 0, "StartRange": 0, "EndRange": 0},
+                headers=NBA_HEADERS, timeout=15,
+            )
+            box.raise_for_status()
+            for rs in box.json().get("resultSets", []):
+                if rs["name"] != "PlayerStats":
+                    continue
+                h = rs["headers"]
+                for row in rs["rowSet"]:
+                    name = row[h.index("PLAYER_NAME")]
+                    if not name:
+                        continue
+                    stat = {
+                        "pts":  row[h.index("PTS")]  or 0,
+                        "reb":  row[h.index("REB")]  or 0,
+                        "ast":  row[h.index("AST")]  or 0,
+                        "fg3m": row[h.index("FG3M")] or 0,
+                        "stl":  row[h.index("STL")]  or 0,
+                        "blk":  row[h.index("BLK")]  or 0,
+                        "tov":  row[h.index("TO")]   or 0,
+                    }
+                    all_stats[_normalize(name)] = stat
+        except Exception as e:
+            print(f"  ⚠️  NBA box {gid}: {e}")
+
+    return all_stats
+
+
+def _grade_nba(bets: list[dict], date_str: str, league_id: str, label: str, dry_run: bool) -> tuple[int, list[str]]:
+    try:
+        all_stats = _get_nba_player_stats(date_str, league_id)
+    except Exception as e:
+        return 0, [f"{label} stats fetch failed: {e}"]
+    print(f"  {label}: loaded {len(all_stats)} players")
+
+    graded, skipped = 0, []
+    for bet in bets:
+        player_norm = _normalize(bet["player"])
+        market_key, line = _parse_prop(bet.get("prop", ""), label)
+        if bet.get("line") is not None and line is None:
+            line = float(bet["line"])
+        if not market_key or line is None:
+            skipped.append(f"{bet['player']} — unparseable: {bet.get('prop')}")
+            continue
+
+        stat_cfg = NBA_PROP_STAT_MAP.get(market_key)
+        if stat_cfg is None:
+            skipped.append(f"{bet['player']} — unknown market: {market_key}")
+            continue
+
+        pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
+        if not pstats:
+            skipped.append(f"{bet['player']} — not found in box scores")
+            continue
+
+        if callable(stat_cfg):
+            val = stat_cfg(pstats)
+        else:
+            val = pstats.get(stat_cfg)
+
+        if val is None:
+            skipped.append(f"{bet['player']} — stat {stat_cfg} not found")
+            continue
+
+        result = _grade_bet(float(val), float(line))
+        if not dry_run:
+            update_result(bet["id"], result)
+        emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+        print(f"  {emoji} [{label}] {bet['player']} | actual={val} vs O{line} → {result.upper()}")
+        graded += 1
+
+    return graded, skipped
+
+
+# ── NHL stats ─────────────────────────────────────────────────────────────────
+
+def _get_nhl_player_stats(date_str: str) -> dict:
+    """
+    Fetch NHL player stats for all games on date_str.
+    Returns dict: normalized_name → stat dict
+    """
+    schedule = requests.get(f"{NHL_API}/schedule/{date_str}", timeout=15)
+    schedule.raise_for_status()
+    game_weeks = schedule.json().get("gameWeek", [])
+
+    game_ids = []
+    for day in game_weeks:
+        if day.get("date") == date_str:
+            for g in day.get("games", []):
+                if g.get("gameState") in ("OFF", "FINAL"):
+                    game_ids.append(g["id"])
+
+    all_stats: dict = {}
+    for gid in game_ids:
+        try:
+            box = requests.get(f"{NHL_API}/gamecenter/{gid}/boxscore", timeout=15)
+            box.raise_for_status()
+            data = box.json()
+            for side in ("homeTeam", "awayTeam"):
+                team = data.get(side, {})
+                for category in ("forwards", "defensemen", "goalies"):
+                    for p in team.get(category, []):
+                        name = f"{p.get('firstName', {}).get('default', '')} {p.get('lastName', {}).get('default', '')}".strip()
+                        if not name:
+                            continue
+                        stat: dict = {}
+                        if category == "goalies":
+                            stat["saves"] = p.get("saveShotsAgainst", 0) - p.get("goalsAgainst", 0)
+                            stat["goals"]  = p.get("goals", 0)
+                            stat["assists"] = p.get("assists", 0)
+                        else:
+                            stat["goals"]        = p.get("goals", 0)
+                            stat["assists"]      = p.get("assists", 0)
+                            stat["shots"]        = p.get("sog", 0)
+                            stat["blockedShots"] = p.get("blockedShots", 0)
+                            stat["hits"]         = p.get("hits", 0)
+                        all_stats[_normalize(name)] = stat
+        except Exception as e:
+            print(f"  ⚠️  NHL game {gid}: {e}")
+
+    return all_stats
+
+
+def _grade_nhl(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, list[str]]:
+    try:
+        all_stats = _get_nhl_player_stats(date_str)
+    except Exception as e:
+        return 0, [f"NHL stats fetch failed: {e}"]
+    print(f"  NHL: loaded {len(all_stats)} players")
+
+    graded, skipped = 0, []
+    for bet in bets:
+        player_norm = _normalize(bet["player"])
+        market_key, line = _parse_prop(bet.get("prop", ""), "NHL")
+        if bet.get("line") is not None and line is None:
+            line = float(bet["line"])
+        if not market_key or line is None:
+            skipped.append(f"{bet['player']} — unparseable: {bet.get('prop')}")
+            continue
+
+        stat_cfg = NHL_PROP_STAT_MAP.get(market_key)
+        if stat_cfg is None:
+            skipped.append(f"{bet['player']} — unknown market: {market_key}")
+            continue
+
+        pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
+        if not pstats:
+            skipped.append(f"{bet['player']} — not found in box scores")
+            continue
+
+        if callable(stat_cfg):
+            val = stat_cfg(pstats)
+        else:
+            val = pstats.get(stat_cfg)
+
+        if val is None:
+            skipped.append(f"{bet['player']} — stat {stat_cfg} not found")
+            continue
+
+        result = _grade_bet(float(val), float(line))
+        if not dry_run:
+            update_result(bet["id"], result)
+        emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+        print(f"  {emoji} [NHL] {bet['player']} | actual={val} vs O{line} → {result.upper()}")
+        graded += 1
+
+    return graded, skipped
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
 
 def grade_pending_bets(target_date: str = None, dry_run: bool = False) -> dict:
     """
     Grade all pending bets for target_date (default: yesterday).
+    Dispatches to MLB / NBA / WNBA / NHL graders by bet sport.
     Returns summary dict.
     """
     if target_date is None:
         target_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    print(f"🔍 Grading bets for {target_date}...")
+    print(f"🔍 Grading bets for {target_date} (dry_run={dry_run})...")
 
-    # Get all Final games
-    games = _get_games_for_date(target_date)
-    print(f"✅ Found {len(games)} Final games")
-
-    if not games:
-        return {"graded": 0, "skipped": 0, "date": target_date, "error": "No final games found"}
-
-    # Build player stats from all games
-    all_player_stats = {}
-    for game in games:
-        try:
-            stats = _get_player_stats(game["gamePk"])
-            all_player_stats.update(stats)
-        except Exception as e:
-            print(f"  ⚠️ Could not fetch game {game['gamePk']}: {e}")
-
-    print(f"📊 Loaded stats for {len(all_player_stats)} players")
-
-    # Load pending bets for target_date
     bets = load_bets()
     pending = [b for b in bets if b["result"] == "pending" and b.get("date") == target_date]
     print(f"📋 Found {len(pending)} pending bets for {target_date}")
 
-    graded = 0
-    skipped = []
+    if not pending:
+        return {"graded": 0, "skipped": 0, "date": target_date}
 
-    for bet in pending:
-        player_norm = _normalize(bet["player"])
-        prop_str = bet.get("prop", "")
-        line = bet.get("line")
+    # Partition by sport
+    by_sport: dict[str, list] = {}
+    for b in pending:
+        s = b.get("sport", "MLB").upper()
+        by_sport.setdefault(s, []).append(b)
 
-        # Parse prop
-        market_key, parsed_line = _parse_prop(prop_str)
-        if parsed_line is not None:
-            line = parsed_line
+    total_graded, total_skipped = 0, []
 
-        if not market_key or line is None:
-            skipped.append(f"{bet['player']} — could not parse prop: {prop_str}")
-            continue
-
-        stat_group, stat_field = PROP_STAT_MAP[market_key]
-
-        # Find player in stats
-        player_stats = all_player_stats.get(player_norm)
-        if not player_stats:
-            # Fuzzy match: check if any key contains the last name
-            last_name = player_norm.split()[-1] if player_norm.split() else ""
-            matches = [k for k in all_player_stats if last_name in k]
-            if len(matches) == 1:
-                player_stats = all_player_stats[matches[0]]
+    for sport, sport_bets in by_sport.items():
+        print(f"\n── {sport} ({len(sport_bets)} bets) ──")
+        try:
+            if sport == "MLB":
+                g, s = _grade_mlb(sport_bets, target_date, dry_run)
+            elif sport == "NBA":
+                g, s = _grade_nba(sport_bets, target_date, "00", "NBA", dry_run)
+            elif sport == "WNBA":
+                g, s = _grade_nba(sport_bets, target_date, "10", "WNBA", dry_run)
+            elif sport == "NHL":
+                g, s = _grade_nhl(sport_bets, target_date, dry_run)
             else:
-                skipped.append(f"{bet['player']} — not found in boxscores")
-                continue
+                g, s = 0, [f"Unsupported sport: {sport}"]
+        except Exception as e:
+            g, s = 0, [f"{sport} grader crashed: {e}"]
 
-        actual_val = player_stats.get(stat_group, {}).get(stat_field)
-        if actual_val is None:
-            skipped.append(f"{bet['player']} — stat {stat_group}.{stat_field} not found")
-            continue
+        total_graded += g
+        total_skipped.extend(s)
 
-        result = _grade_bet(float(actual_val), float(line))
-
-        if not dry_run:
-            update_result(bet["id"], result)
-
-        emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
-        print(f"  {emoji} {bet['player']} | {prop_str} | actual={actual_val} vs line={line} → {result.upper()}")
-        graded += 1
-
-    summary = {
-        "date": target_date,
-        "graded": graded,
-        "skipped": len(skipped),
-        "skipped_details": skipped,
-        "total_player_stats": len(all_player_stats),
-    }
-
-    print(f"\n📈 Done: {graded} graded, {len(skipped)} skipped")
-    if skipped:
+    print(f"\n📈 Done: {total_graded} graded, {len(total_skipped)} skipped")
+    if total_skipped:
         print("Skipped:")
-        for s in skipped:
+        for s in total_skipped:
             print(f"  - {s}")
 
-    return summary
+    return {
+        "date": target_date,
+        "graded": total_graded,
+        "skipped": len(total_skipped),
+        "skipped_details": total_skipped,
+    }
 
 
 if __name__ == "__main__":
-    import sys
     dry = "--dry-run" in sys.argv
     date_arg = next((a for a in sys.argv[1:] if a.startswith("20")), None)
     result = grade_pending_bets(target_date=date_arg, dry_run=dry)

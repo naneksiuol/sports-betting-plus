@@ -813,7 +813,7 @@ def render_sport_tab(sport: str, use_live: bool):
 
         st.divider()
         edge_threshold = st.slider("Min Edge", min_value=-0.05, max_value=0.12,
-                                   value=0.03, step=0.005, format="%.3f",
+                                   value=0.0, step=0.005, format="%.3f",
                                    key=f"edge_slider_{sport}")
         all_teams = sorted(df["team"].dropna().unique())
         selected_teams = st.multiselect("Matchups", options=all_teams, default=all_teams,
@@ -837,7 +837,7 @@ def render_sport_tab(sport: str, use_live: bool):
         & (df["edge"] >= edge_threshold)
         & (df["team"].isin(selected_teams))
         & (df["player"].str.contains(player_search, case=False, na=False))
-    ].sort_values("over_odds", ascending=False).copy()
+    ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
 
@@ -1029,19 +1029,17 @@ def render_sport_tab(sport: str, use_live: bool):
                                mime="text/csv", use_container_width=True,
                                key=f"dl_{sport}")
         with col_email:
-            if st.button("📧 Email Daily Slip", use_container_width=True, key=f"email_{sport}"):
+            if st.button("📧 Email All Sports Slip", use_container_width=True, key=f"email_{sport}"):
                 try:
                     import importlib
-                    from parlay_builder import build_parlay_report
-                    from subscribers import load_subscribers
                     sys.path.insert(0, str(Path(__file__).parent.parent))
                     import send_daily_bets
                     importlib.reload(send_daily_bets)
-                    parlay_report = build_parlay_report(filtered)
-                    results = send_daily_bets.send_email(df=filtered, parlay_report=parlay_report)
+                    with st.spinner("Scraping all sports…"):
+                        results = send_daily_bets.send_email(all_sports=True)
                     sent = results.get("sent", [])
                     failed = results.get("failed", [])
-                    st.success(f"✅ Sent to {len(sent)} recipient(s): {', '.join(sent)}")
+                    st.success(f"✅ All-sports slip sent to {len(sent)} recipient(s): {', '.join(sent)}")
                     if failed:
                         st.warning(f"⚠️ Failed: {', '.join(f[0] for f in failed)}")
                 except Exception as e:
@@ -1161,7 +1159,17 @@ def render_sport_tab(sport: str, use_live: bool):
 
         stake = st.number_input("Stake per parlay ($)", min_value=1.0, max_value=10000.0,
                                 value=10.0, step=5.0, key=f"stake_{sport}")
-        report = build_parlay_report(filtered, stake=stake)
+
+        # SGP pool: same market/team/player filters as the main board, but
+        # no edge-threshold cut so SGP legs aren't too thin. The builder
+        # applies its own -0.03 floor internally.
+        sgp_pool = df[
+            (df["market"].isin(selected_markets))
+            & (df["team"].isin(selected_teams if selected_teams else df["team"].unique()))
+            & (df["player"].str.contains(player_search, case=False, na=False) if player_search else True)
+        ].copy()
+
+        report = build_parlay_report(filtered, stake=stake, full_df=sgp_pool)
 
         st.markdown("#### 🏆 Top 10 Best Edge Candidates")
         st.caption("Highest edge plays within -300 to +300 odds — sorted by edge, best value first.")
@@ -1179,8 +1187,21 @@ def render_sport_tab(sport: str, use_live: bool):
 
         st.divider()
         st.markdown("#### 📋 Multi-Game Parlays")
-        p_cols = st.columns(3)
-        for i, n in enumerate([3, 4, 5]):
+        pos_games   = report.get("pos_edge_games", 0)
+        total_games = report.get("total_games", 0)
+        multi_possible = pos_games >= 3
+
+        if not multi_possible:
+            st.info(
+                f"**{pos_games} game{'s' if pos_games != 1 else ''} with positive-edge plays today** "
+                f"(out of {total_games} total). Need 3+ for a cross-game parlay."
+                + (" 2-leg shown below." if pos_games == 2 else "")
+            )
+
+        # ── Multi-game parlays (2/3/4/5-leg) when data allows ──
+        show_legs = [2, 3, 4, 5] if "2_leg" in report["parlays"] else [3, 4, 5]
+        p_cols = st.columns(len(show_legs))
+        for i, n in enumerate(show_legs):
             pkey = f"{n}_leg"
             with p_cols[i]:
                 st.markdown(f"**{n}-Leg Parlay**")
@@ -1195,7 +1216,6 @@ def render_sport_tab(sport: str, use_live: bool):
                         odds_fmt = f"+{int(leg['over_odds'])}" if leg['over_odds'] > 0 else str(int(leg['over_odds']))
                         st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_fmt}) *{edge_pct}*")
                         st.caption(f"   {leg['team']}")
-                    # Log all legs button
                     if st.button(f"📝 Log {n}-Leg Parlay to Tracker",
                                  key=f"log_parlay_{sport}_{n}", use_container_width=True):
                         from bet_tracker import add_bet
@@ -1217,8 +1237,121 @@ def render_sport_tab(sport: str, use_live: bool):
                                 fair_est=leg.get("fair_est"),
                             )
                         st.success(f"✅ {n} legs logged to Tracker!")
-                else:
-                    st.info("Not enough different-game players.")
+                elif n > 2:
+                    needed = n - pos_games
+                    st.caption(f"Need {needed} more game{'s' if needed != 1 else ''} with value plays.")
+
+        # ── Log All Parlays + SGPs ──
+        _has_parlays = bool(report["parlays"])
+        _has_sgps    = bool(report.get("sgps"))
+        _diverse     = report.get("diverse_sgps", {})
+        _has_diverse = bool(_diverse and any(_diverse.values()))
+        if _has_parlays or _has_sgps or _has_diverse:
+            _n_parlays = len(report["parlays"])
+            _n_sgps    = len(report.get("sgps", []))
+            _n_div     = sum(len(v) for v in _diverse.values())
+            _label = f"📝 Log Everything to Tracker"
+            _parts = []
+            if _n_parlays: _parts.append(f"{_n_parlays} parlay{'s' if _n_parlays!=1 else ''}")
+            if _n_sgps:    _parts.append(f"{_n_sgps} SGP{'s' if _n_sgps!=1 else ''}")
+            if _n_div:     _parts.append(f"{_n_div} best SGP combo{'s' if _n_div!=1 else ''}")
+            if _parts:
+                _label += f" ({', '.join(_parts)})"
+            if st.button(_label, key=f"log_all_parlays_{sport}", use_container_width=True, type="primary"):
+                from bet_tracker import add_bet
+                total_logged = 0
+
+                # Multi-game parlays
+                for pkey, p in report["parlays"].items():
+                    n_legs_key = int(pkey.split("_")[0])
+                    pout = p["payout"]
+                    for leg in p["legs"]:
+                        prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                        sk = (leg["player"].lower(), leg.get("market",""), float(leg.get("line", 0.5)))
+                        sl = sharp_map.get(sk, {})
+                        add_bet(
+                            sport=sport, player=leg["player"],
+                            prop=f"{prop} O{leg.get('line','')} [{n_legs_key}-leg parlay]",
+                            line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                            stake=round(stake / n_legs_key, 2), book="",
+                            notes=f"Auto-logged {n_legs_key}-leg parlay | {pout['american_odds']} combined",
+                            sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
+                        )
+                        total_logged += 1
+
+                # Regular SGPs
+                for sgp in report.get("sgps", []):
+                    n_legs_key = len(sgp["legs"])
+                    pout = sgp["payout"]
+                    for leg in sgp["legs"]:
+                        prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                        sk = (leg["player"].lower(), leg.get("market",""), float(leg.get("line", 0.5)))
+                        sl = sharp_map.get(sk, {})
+                        add_bet(
+                            sport=sport, player=leg["player"],
+                            prop=f"{prop} O{leg.get('line','')} [SGP]",
+                            line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                            stake=round(stake / n_legs_key, 2), book="",
+                            notes=f"Auto-logged SGP {sgp['game']} | {pout['american_odds']} combined",
+                            sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
+                        )
+                        total_logged += 1
+
+                # Best diverse SGP combos (all sizes)
+                for size_key, combos in _diverse.items():
+                    n_legs_key = int(size_key.split("_")[0])
+                    for ci, sgp in enumerate(combos, 1):
+                        pout = sgp["payout"]
+                        for leg in sgp["legs"]:
+                            prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                            sk = (leg["player"].lower(), leg.get("market",""), float(leg.get("line", 0.5)))
+                            sl = sharp_map.get(sk, {})
+                            add_bet(
+                                sport=sport, player=leg["player"],
+                                prop=f"{prop} O{leg.get('line','')} [SGP combo #{ci}]",
+                                line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                                stake=round(stake / n_legs_key, 2), book="",
+                                notes=f"Auto-logged best {n_legs_key}-leg SGP combo #{ci} | {sgp['game']} | {pout['american_odds']}",
+                                sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
+                            )
+                            total_logged += 1
+
+                st.success(f"✅ Logged {total_logged} total legs to Tracker! ({', '.join(_parts)})")
+
+        # ── Diverse SGP combos — always shown ──
+        diverse = report.get("diverse_sgps", {})
+        if diverse and any(diverse.values()):
+            st.divider()
+            st.markdown("#### 🎲 Best SGP Combinations")
+            st.caption("Top 5 diverse same-game combos per leg count — ranked by combined edge × correlation penalty.")
+
+            size_tabs = st.tabs([f"{n}-Leg SGPs" for n in [3, 4, 5] if f"{n}_leg" in diverse and diverse[f"{n}_leg"]])
+            tab_idx = 0
+            for n in [3, 4, 5]:
+                key = f"{n}_leg"
+                if key not in diverse or not diverse[key]:
+                    continue
+                with size_tabs[tab_idx]:
+                    tab_idx += 1
+                    combos = diverse[key]
+                    combo_cols = st.columns(min(len(combos), 3))
+                    for ci, sgp in enumerate(combos):
+                        with combo_cols[ci % 3]:
+                            pout = sgp["payout"]
+                            pen  = sgp.get("independence_penalty", 1.0)
+                            ev   = sgp.get("combined_ev", 0)
+                            st.markdown(f"**#{ci+1} — {sgp['game']}**")
+                            st.metric(
+                                "Payout",
+                                f"${pout['payout']:.2f}",
+                                delta=f"{pout['american_odds']} odds",
+                            )
+                            st.caption(f"Combined EV: {ev*100:+.2f}% | Corr. penalty: {pen:.0%}")
+                            for j, leg in enumerate(sgp["legs"], 1):
+                                prop    = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                                edge_p  = f"{leg.get('edge', 0)*100:+.1f}%"
+                                odds_f  = f"+{int(leg['over_odds'])}" if leg['over_odds'] > 0 else str(int(leg['over_odds']))
+                                st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_f}) *{edge_p}*")
 
         st.divider()
         st.markdown("#### 🔗 Same-Game Parlays (SGPs)")
@@ -1226,7 +1359,7 @@ def render_sport_tab(sport: str, use_live: bool):
         if report["sgps"]:
             sgp_cols = st.columns(min(len(report["sgps"]), 3))
             for i, sgp in enumerate(report["sgps"]):
-                with sgp_cols[i]:
+                with sgp_cols[i % 3]:
                     st.markdown(f"**{sgp['game']}**")
                     pout = sgp["payout"]
                     penalty = sgp.get("independence_penalty", 1.0)

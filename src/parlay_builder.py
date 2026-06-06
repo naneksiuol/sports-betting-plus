@@ -138,6 +138,8 @@ def _market_bucket(market: str) -> str:
 
 def _score_and_rank(df: pd.DataFrame) -> pd.DataFrame:
     """Add ev_score column and return sorted copy."""
+    if df.empty:
+        return df
     rows = df.to_dict("records")
     for r in rows:
         r["ev_score"] = _ev_score(r)
@@ -147,66 +149,54 @@ def _score_and_rank(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Multi-Game Parlay ─────────────────────────────────────────────────────────
 
-def get_top_candidates(df: pd.DataFrame, min_odds: int = -300,
-                       max_odds: int = 300, n: int = 10) -> pd.DataFrame:
+def get_top_candidates(df: pd.DataFrame, min_odds: int = -500,
+                       max_odds: int = 2000, n: int = 10) -> pd.DataFrame:
     """
-    Top N candidates by EV score, within odds range.
-    One row per (player, market) — already deduplicated upstream.
+    Top N props by edge across the full board.
+    Sorted by edge descending so the display always shows exactly N rows.
+    Odds range is wide by default — the parlay builders use their own tighter window.
     """
+    if df.empty or "edge" not in df.columns:
+        return df
     pool = df[(df["over_odds"] >= min_odds) & (df["over_odds"] <= max_odds)].copy()
-    return _score_and_rank(pool).head(n)
+    return pool.sort_values("edge", ascending=False).head(n)
 
 
 def build_multi_game_parlay(df: pd.DataFrame, n_legs: int,
                             min_odds: int = -300, max_odds: int = 300) -> list[dict]:
     """
-    Build an n-leg multi-game parlay with:
-      - One player per game
-      - No correlated markets on the same player
-      - Max 2 legs sharing the same market bucket
-      - Legs ranked by EV score (edge * sqrt(fair_prob))
+    Build an n-leg multi-game parlay.
+
+    Rules (in priority order):
+      1. One player per game — no stacking the same matchup
+      2. One prop per player — best EV prop chosen if a player has multiple
+      3. Legs ranked by EV score = edge * sqrt(fair_prob)
+
+    No bucket cap: batter_hits from five different games are five independent bets.
+    Cross-game correlation is near zero regardless of market type; the "one per game"
+    rule is the correct guard, not market-bucket filtering.
     """
     pool = df[(df["over_odds"] >= min_odds) & (df["over_odds"] <= max_odds)].copy()
     ranked = _score_and_rank(pool)
 
-    seen_games = set()
+    seen_games   = set()
     seen_players = set()
-    bucket_counts: dict[str, int] = {}
-    player_markets: dict[str, list[str]] = {}
-    legs = []
+    legs         = []
 
     for _, row in ranked.iterrows():
         if row.get("ev_score", 0) <= 0:
             continue
 
-        game = row["team"]
+        game   = row["team"]
         player = row["player"]
-        market = row.get("market", "")
-        bucket = _market_bucket(market)
 
-        # Hard rules
         if game in seen_games:
             continue
         if player in seen_players:
             continue
 
-        # Bucket cap: max 2 legs of same market bucket per parlay
-        if bucket_counts.get(bucket, 0) >= 2:
-            continue
-
-        # Correlation check: don't add a market correlated to one already
-        # on a DIFFERENT player if they're in the same game (SGP-style correlation)
-        already_in_game_markets = [
-            l["market"] for l in legs if l["team"] == game
-        ]
-        corr_conflict = any(_are_correlated(market, m) for m in already_in_game_markets)
-        if corr_conflict:
-            continue
-
         seen_games.add(game)
         seen_players.add(player)
-        bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
-        player_markets.setdefault(player, []).append(market)
         legs.append(row.to_dict())
 
         if len(legs) == n_legs:
@@ -217,27 +207,61 @@ def build_multi_game_parlay(df: pd.DataFrame, n_legs: int,
 
 # ── Same-Game Parlay (SGP) ────────────────────────────────────────────────────
 
-def _independence_penalty(markets: list[str]) -> float:
+def _independence_penalty(legs: list[dict]) -> float:
     """
-    Returns a penalty multiplier 0..1.
-    For every correlated pair found, reduce combined EV by 15%.
-    Uncorrelated legs return 1.0 (no penalty).
+    Copula-based independence penalty for a set of SGP legs.
+
+    Penalty = product(marginals) / copula_joint_probability
+
+    When all legs are independent, ratio = 1.0 (no penalty).
+    When legs are correlated, copula_joint > product → ratio < 1.0 (we're
+    over-counting EV since the book charges a correlation tax).
+
+    Falls back to the old flat 0.85-per-correlated-pair when scipy is absent.
     """
-    penalty = 1.0
-    for a, b in combinations(markets, 2):
-        if _are_correlated(a, b):
-            penalty *= 0.85
-    return penalty
+    try:
+        from edge_model import gaussian_copula_joint
+        import math
+
+        probs = [min(max(float(r.get("fair_est", 0.5)), 0.001), 0.999) for r in legs]
+        product_joint = 1.0
+        for p in probs:
+            product_joint *= p
+
+        copula_joint = gaussian_copula_joint(legs)
+        if copula_joint <= 0:
+            return 1.0
+
+        # Penalty = how much we over-count EV by assuming independence
+        ratio = product_joint / copula_joint
+        return min(max(ratio, 0.1), 1.0)
+
+    except Exception:
+        # Fallback: 15% flat penalty per correlated pair
+        markets = [r.get("market", "") for r in legs]
+        penalty = 1.0
+        for a, b in combinations(markets, 2):
+            if _are_correlated(a, b):
+                penalty *= 0.85
+        return penalty
 
 
 def build_sgps(df: pd.DataFrame, min_odds: int = -300,
-               n_sgps: int = 3, legs_per_sgp: int = 3) -> list[dict]:
+               n_sgps: int = 5, legs_per_sgp: int = 3,
+               min_leg_edge: float = -0.03) -> list[dict]:
     """
-    Build SGPs (same-game parlays) with:
-      - One prop per player (best EV prop chosen per player)
-      - Market bucket diversity within the game
-      - Legs scored by independence-adjusted combined EV score
-      - Avoid pure duplicates of the same market bucket
+    Build Same-Game Parlays from every game with 3+ distinct players.
+
+    Selection strategy:
+      - One prop per player (best-edge prop chosen per player)
+      - No ev_score > 0 requirement — SGPs are built from the best available
+        lines in each game, not just positive-edge ones. The combined edge
+        across legs + correlation tax determines overall SGP value.
+      - Legs with individual edge < min_leg_edge are excluded (floor on quality)
+      - No bucket cap: correlation is already handled by the copula penalty in
+        _independence_penalty; bucket filtering would block valid same-game stacks
+      - SGPs scored by sum(edge per leg) * independence_penalty — surface the
+        games where the book has the worst combined pricing
     """
     pool = df[df["over_odds"] >= min_odds].copy()
     pool = _score_and_rank(pool)
@@ -246,34 +270,39 @@ def build_sgps(df: pd.DataFrame, min_odds: int = -300,
     sgp_candidates = []
 
     for game, group in game_groups:
-        # Best EV prop per player (no doubles on same player)
-        best_per_player = (
-            group.sort_values("ev_score", ascending=False)
+        # Best edge prop per player — use edge (not ev_score) so odds range
+        # doesn't penalise long-shot legs; floor keeps out truly broken lines
+        candidates = (
+            group[group["edge"] >= min_leg_edge]
+            .sort_values("edge", ascending=False)
             .drop_duplicates(subset=["player"])
         )
 
-        if len(best_per_player) < legs_per_sgp:
+        if len(candidates) < legs_per_sgp:
             continue
 
-        # Greedy diverse selection: pick legs maximising EV with bucket diversity
-        selected = []
-        used_buckets: dict[str, int] = {}
+        # Greedy selection: highest-edge player first, one per player,
+        # skip if same player would contribute two correlated markets
+        selected: list[dict] = []
         used_players: set = set()
+        used_markets: dict[str, str] = {}  # player → market already selected
 
-        for _, row in best_per_player.iterrows():
-            if row.get("ev_score", 0) <= 0:
-                continue
-            bucket = _market_bucket(row.get("market", ""))
+        for _, row in candidates.iterrows():
             player = row["player"]
+            market = row.get("market", "")
 
             if player in used_players:
                 continue
-            if used_buckets.get(bucket, 0) >= 1:  # strict: 1 per bucket in SGP
+
+            # Block same player with a correlated market (shouldn't happen after
+            # drop_duplicates, but guard for safety)
+            existing = used_markets.get(player, "")
+            if existing and _are_correlated(market, existing):
                 continue
 
             selected.append(row.to_dict())
-            used_buckets[bucket] = used_buckets.get(bucket, 0) + 1
             used_players.add(player)
+            used_markets[player] = market
 
             if len(selected) == legs_per_sgp:
                 break
@@ -281,10 +310,9 @@ def build_sgps(df: pd.DataFrame, min_odds: int = -300,
         if len(selected) < legs_per_sgp:
             continue
 
-        # Score this SGP
-        markets = [r.get("market", "") for r in selected]
-        ind_penalty = _independence_penalty(markets)
-        combined_ev = sum(r.get("ev_score", 0) for r in selected) * ind_penalty
+        # Score: sum of individual edges weighted by correlation penalty
+        ind_penalty = _independence_penalty(selected)
+        combined_ev = sum(r.get("edge", 0) for r in selected) * ind_penalty
 
         odds_list = [r["over_odds"] for r in selected]
         payout = parlay_payout(odds_list)
@@ -309,14 +337,111 @@ def build_sgps(df: pd.DataFrame, min_odds: int = -300,
     return sgp_candidates[:n_sgps]
 
 
+# ── Diverse SGP combos (3/4/5-leg) ────────────────────────────────────────────
+
+def build_diverse_sgps(
+    df: pd.DataFrame,
+    n_per_size: int = 5,
+    leg_sizes: list[int] = [3, 4, 5],
+    min_leg_edge: float = -0.03,
+    max_players_per_game: int = 12,
+) -> dict[str, list[dict]]:
+    """
+    For each leg size in leg_sizes, enumerate the top n_per_size diverse SGP
+    combinations drawn from ANY game in df.
+
+    Method:
+      - Per game: take the top max_players_per_game players by edge (floor = min_leg_edge)
+      - Enumerate all C(players, n_legs) combinations — fast for ≤12 players
+      - Score each combo by sum(edge) (cheap) to rank quickly
+      - For the top n_per_size × 2 candidates do full copula penalty scoring
+      - Return top n_per_size across all games, sorted by combined_ev
+
+    Returns dict: {"3_leg": [sgp1,...], "4_leg": [...], "5_leg": [...]}
+    """
+    from itertools import combinations as _comb
+    from edge_model import sgp_correlation_tax
+
+    pool = df[
+        (df["over_odds"] >= -300) &
+        (df["edge"] >= min_leg_edge)
+    ].copy()
+
+    result: dict[str, list[dict]] = {}
+
+    for n_legs in leg_sizes:
+        key = f"{n_legs}_leg"
+        candidates = []
+
+        for game, group in pool.groupby("team"):
+            players = (
+                group.sort_values("edge", ascending=False)
+                .drop_duplicates(subset=["player"])
+                .head(max_players_per_game)
+            )
+            if len(players) < n_legs:
+                continue
+
+            rows = players.to_dict("records")
+
+            # Score all combos cheaply (sum of edges)
+            quick_scored = []
+            for idx_combo in _comb(range(len(rows)), n_legs):
+                selected = [rows[i] for i in idx_combo]
+                quick_score = sum(r.get("edge", 0) for r in selected)
+                quick_scored.append((quick_score, selected))
+
+            quick_scored.sort(key=lambda x: x[0], reverse=True)
+
+            # Full copula scoring on top 2× candidates per game
+            for _, selected in quick_scored[: n_per_size * 2]:
+                ind_penalty  = _independence_penalty(selected)
+                combined_ev  = sum(r.get("edge", 0) for r in selected) * ind_penalty
+                odds_list    = [r["over_odds"] for r in selected]
+                payout       = parlay_payout(odds_list)
+                corr_tax     = sgp_correlation_tax(selected, payout["combined_decimal"])
+
+                candidates.append({
+                    "game":                 game,
+                    "legs":                 selected,
+                    "payout":               payout,
+                    "combined_ev":          round(combined_ev, 4),
+                    "independence_penalty": round(ind_penalty, 3),
+                    "correlation_tax":      corr_tax,
+                })
+
+        candidates.sort(key=lambda x: x["combined_ev"], reverse=True)
+        result[key] = candidates[:n_per_size]
+
+    return result
+
+
 # ── Full Report ───────────────────────────────────────────────────────────────
 
-def build_parlay_report(df: pd.DataFrame, stake: float = 10.0) -> dict:
-    """Full parlay report: top candidates, 3/4/5-leg parlays, top SGPs."""
+def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
+                        full_df: pd.DataFrame | None = None) -> dict:
+    """
+    Full parlay report.
+    df       — filtered props (used for multi-game parlay leg selection)
+    full_df  — all props before edge filter (used for SGP combo generation so
+               games with thin-but-playable lines still appear in SGPs)
+    """
+    if df.empty or "over_odds" not in df.columns:
+        return {"top10": [], "parlays": {}, "sgps": [], "diverse_sgps": {},
+                "stake": stake, "pos_edge_games": 0, "total_games": 0}
+    sgp_source = full_df if (full_df is not None and not full_df.empty) else df
     top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=10)
 
+    # Count how many games have at least one positive-edge play
+    pos_edge_games = (
+        int(df[df["edge"] > 0]["team"].nunique())
+        if "edge" in df.columns and not df.empty else 0
+    )
+
     parlays = {}
-    for n in [3, 4, 5]:
+    for n in [2, 3, 4, 5]:
+        if pos_edge_games < n:
+            continue  # not enough qualifying games for this leg count
         legs = build_multi_game_parlay(df, n_legs=n, min_odds=-300, max_odds=300)
         if len(legs) == n:
             odds = [r["over_odds"] for r in legs]
@@ -325,11 +450,17 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0) -> dict:
                 "payout": parlay_payout(odds, stake),
             }
 
-    sgps = build_sgps(df, min_odds=-300, n_sgps=3, legs_per_sgp=3)
+    sgps = build_sgps(sgp_source, min_odds=-300, n_sgps=5, legs_per_sgp=3)
+
+    # Diverse multi-size SGPs — always shown, uses full prop pool for wider coverage
+    diverse_sgps = build_diverse_sgps(sgp_source, n_per_size=5, leg_sizes=[3, 4, 5])
 
     return {
-        "top10": top10.to_dict("records"),
-        "parlays": parlays,
-        "sgps": sgps,
-        "stake": stake,
+        "top10":          top10.to_dict("records"),
+        "parlays":        parlays,
+        "sgps":           sgps,
+        "diverse_sgps":   diverse_sgps,
+        "stake":          stake,
+        "pos_edge_games": pos_edge_games,
+        "total_games":    int(df["team"].nunique()) if not df.empty else 0,
     }
