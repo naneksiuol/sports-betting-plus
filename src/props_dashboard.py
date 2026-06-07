@@ -1614,11 +1614,19 @@ def render_sport_tab(sport: str, use_live: bool):
         pass
 
     # ── Streak enrichment — adds "streak" and "hot" columns ──────────────────
+    # Only fetch for top-edge rows (max 30) to avoid blocking the page on 1000+
+    # API calls. Remaining rows get empty streak so the table still renders fast.
     try:
         from streak_detector import get_streaks_for_df
-        df = get_streaks_for_df(df, sport)
+        _top_idx = df.nlargest(30, "edge").index
+        _streak_top = get_streaks_for_df(df.loc[_top_idx], sport)
+        df["streak"] = ""
+        df["hot"] = False
+        df.loc[_top_idx, "streak"] = _streak_top["streak"].values
+        df.loc[_top_idx, "hot"]    = _streak_top["hot"].values
     except Exception:
-        pass
+        df["streak"] = ""
+        df["hot"] = False
 
     cache_key = f"filtered_{sport}"
     _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
