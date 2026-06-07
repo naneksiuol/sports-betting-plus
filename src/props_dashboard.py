@@ -3060,6 +3060,33 @@ def main():
         st.subheader("Bankroll Settings")
         st.session_state.setdefault("settings", load_settings())
         _s = st.session_state["settings"]
+
+        # ── Restore saved filters on first load of session ──────────────────
+        if not st.session_state.get("_filters_restored") and _s.get("filters"):
+            for _fsport, _fdata in _s["filters"].items():
+                # Restore market checkboxes
+                for _mkt, _checked in _fdata.get("markets", {}).items():
+                    _chk_key = f"mkt_chk_{_fsport}_{_mkt}"
+                    if _chk_key not in st.session_state:
+                        st.session_state[_chk_key] = _checked
+                # Restore edge slider
+                _ekey = f"edge_slider_{_fsport}"
+                if _ekey not in st.session_state and _fdata.get("edge") is not None:
+                    st.session_state[_ekey] = float(_fdata["edge"])
+                # Restore teams multiselect
+                _tkey = f"teams_{_fsport}"
+                if _tkey not in st.session_state and _fdata.get("teams"):
+                    st.session_state[_tkey] = _fdata["teams"]
+                # Restore search
+                _skey = f"search_{_fsport}"
+                if _skey not in st.session_state and _fdata.get("search"):
+                    st.session_state[_skey] = _fdata["search"]
+                # Restore toggles
+                for _tog in ("confirmed", "shop_alerts", "hot_streaks"):
+                    _togkey = f"{_tog}_{_fsport}"
+                    if _togkey not in st.session_state:
+                        st.session_state[_togkey] = bool(_fdata.get(_tog, False))
+            st.session_state["_filters_restored"] = True
         _starting_bankroll = st.number_input(
             "Starting Bankroll ($)",
             min_value=10.0,
@@ -3085,14 +3112,31 @@ def main():
             key="settings_kelly_multiplier",
         )
         if st.button("💾 Save Settings", key="save_settings_btn"):
+            # Collect filter state for every live sport
+            _filter_snapshot = {}
+            for _fsport in [s for s, c in SPORTS_CONFIG.items() if c.get("status") == "live"]:
+                _fmkts = {
+                    mkt: bool(st.session_state.get(f"mkt_chk_{_fsport}_{mkt}", False))
+                    for mkt in SPORTS_CONFIG[_fsport]["market_labels"]
+                }
+                _filter_snapshot[_fsport] = {
+                    "markets":      _fmkts,
+                    "edge":         st.session_state.get(f"edge_slider_{_fsport}", 0.0),
+                    "teams":        st.session_state.get(f"teams_{_fsport}", []),
+                    "search":       st.session_state.get(f"search_{_fsport}", ""),
+                    "confirmed":    st.session_state.get(f"confirmed_{_fsport}", False),
+                    "shop_alerts":  st.session_state.get(f"shop_alerts_{_fsport}", False),
+                    "hot_streaks":  st.session_state.get(f"hot_streaks_{_fsport}", False),
+                }
             _new_settings = {
                 "starting_bankroll": _starting_bankroll,
-                "unit_size": _unit_size,
-                "kelly_multiplier": _kelly_multiplier,
+                "unit_size":         _unit_size,
+                "kelly_multiplier":  _kelly_multiplier,
+                "filters":           _filter_snapshot,
             }
             save_settings(_new_settings)
             st.session_state["settings"] = _new_settings
-            st.sidebar.success("Saved!")
+            st.success("✅ Settings & filters saved!")
 
         # ── Kelly Portfolio Optimizer (sidebar) ──
         st.divider()
