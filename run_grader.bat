@@ -12,3 +12,6 @@ echo [%date% %time%] Auto-grader started >> logs\grader.log
 call venv\Scripts\activate.bat
 python auto_grade.py >> logs\grader.log 2>&1
 echo [%date% %time%] Auto-grader finished >> logs\grader.log
+echo [%date% %time%] Model retrain started >> logs\grader.log
+python train_models.py >> logs\grader.log 2>&1
+echo [%date% %time%] Model retrain finished >> logs\grader.log

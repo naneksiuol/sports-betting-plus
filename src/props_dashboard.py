@@ -973,6 +973,150 @@ def render_bet_tracker():
                 for _d, v in sorted(_daily.items(), reverse=True)
             ]
             st.dataframe(pd.DataFrame(_daily_rows), use_container_width=True, hide_index=True)
+
+        # ── CLV Tracking ──────────────────────────────────────────────────────
+        st.divider()
+        with st.expander("📐 CLV Tracking by Sport / Market / Book", expanded=False):
+            _all_bets_clv = load_bets()
+            _clv_bets = [
+                b for b in _all_bets_clv
+                if (b.get("clv") if b.get("clv") is not None else b.get("opening_clv")) is not None
+            ]
+            if not _clv_bets:
+                st.info("No bets with CLV data yet. CLV is captured when you log closing odds.")
+            else:
+                def _bet_clv(b):
+                    return float(b.get("clv") if b.get("clv") is not None else b.get("opening_clv"))
+
+                def _clv_table(group_key, label):
+                    groups: dict = {}
+                    for b in _clv_bets:
+                        key = b.get(group_key) or "Unknown"
+                        clv_val = _bet_clv(b)
+                        res = b.get("result")
+                        if key not in groups:
+                            groups[key] = {"clv_sum": 0.0, "count": 0, "wins": 0, "settled": 0}
+                        groups[key]["clv_sum"] += clv_val
+                        groups[key]["count"] += 1
+                        if res in ("win", "loss"):
+                            groups[key]["settled"] += 1
+                            if res == "win":
+                                groups[key]["wins"] += 1
+                    rows = []
+                    for name, d in sorted(groups.items(), key=lambda x: -x[1]["clv_sum"]/x[1]["count"]):
+                        avg_clv = d["clv_sum"] / d["count"]
+                        win_pct = (d["wins"] / d["settled"] * 100) if d["settled"] > 0 else None
+                        rows.append({
+                            label:     name,
+                            "Avg CLV": f"{avg_clv:+.2f}%",
+                            "Count":   d["count"],
+                            "Win%":    f"{win_pct:.0f}%" if win_pct is not None else "—",
+                        })
+                    return pd.DataFrame(rows)
+
+                _c1, _c2, _c3 = st.columns(3)
+                with _c1:
+                    st.markdown("**By Sport**")
+                    st.dataframe(_clv_table("sport", "Sport"), use_container_width=True, hide_index=True)
+                with _c2:
+                    st.markdown("**By Market**")
+                    st.dataframe(_clv_table("market", "Market"), use_container_width=True, hide_index=True)
+                with _c3:
+                    st.markdown("**By Book**")
+                    st.dataframe(_clv_table("book", "Book"), use_container_width=True, hide_index=True)
+
+        # ── Bankroll Curve ────────────────────────────────────────────────────
+        st.divider()
+        with st.expander("💰 Bankroll Curve", expanded=False):
+            _graded = [b for b in settled if b.get("result") in ("win", "loss", "push")]
+            if not _graded:
+                st.info("No graded bets yet.")
+            else:
+                def _odds_to_decimal(odds):
+                    try:
+                        odds = float(odds)
+                    except (TypeError, ValueError):
+                        return 1.0
+                    if odds >= 100:
+                        return (odds / 100) + 1
+                    elif odds <= -100:
+                        return (100 / abs(odds)) + 1
+                    return 1.0
+
+                _STARTING_BK = 1000.0
+                _bk = _STARTING_BK
+                _bk_rows = []
+                for _b in _graded:
+                    _res = _b.get("result")
+                    _stake = float(_b.get("stake") or 0)
+                    _odds  = _b.get("odds")
+                    if _res == "win":
+                        _pnl = _stake * (_odds_to_decimal(_odds) - 1)
+                    elif _res == "loss":
+                        _pnl = -_stake
+                    else:
+                        _pnl = 0.0
+                    _bk += _pnl
+                    _bk_rows.append({"date": _b.get("date", "?"), "bankroll": round(_bk, 2)})
+
+                _bk_df = pd.DataFrame(_bk_rows)
+                _peak = _STARTING_BK
+                _peak_idx = 0
+                _max_dd = 0.0
+                _trough_idx = 0
+                _dd_peak_idx = 0
+                _cur_peak = _STARTING_BK
+                _cur_peak_i = 0
+                for i, row in _bk_df.iterrows():
+                    if row["bankroll"] > _cur_peak:
+                        _cur_peak = row["bankroll"]
+                        _cur_peak_i = i
+                    dd = _cur_peak - row["bankroll"]
+                    if dd > _max_dd:
+                        _max_dd = dd
+                        _trough_idx = i
+                        _dd_peak_idx = _cur_peak_i
+
+                _peak_bk = _bk_df["bankroll"].max()
+                _current_bk = _bk_df["bankroll"].iloc[-1]
+                _max_dd_pct = (_max_dd / _bk_df.at[_dd_peak_idx, "bankroll"] * 100) if _max_dd > 0 else 0
+
+                import plotly.graph_objects as _go_bk
+                _fig_bk = _go_bk.Figure()
+                _fig_bk.add_trace(_go_bk.Scatter(
+                    x=_bk_df["date"], y=_bk_df["bankroll"],
+                    mode="lines+markers",
+                    line=dict(color="#00ff88", width=2),
+                    marker=dict(size=5),
+                    name="Bankroll",
+                ))
+                _fig_bk.add_hline(y=_STARTING_BK, line_dash="dot",
+                                   line_color="rgba(255,255,255,0.3)",
+                                   annotation_text="Start $1,000")
+                if _max_dd > 0:
+                    _peak_date   = _bk_df.at[_dd_peak_idx, "date"]
+                    _trough_date = _bk_df.at[_trough_idx, "date"]
+                    _fig_bk.add_vrect(
+                        x0=_peak_date, x1=_trough_date,
+                        fillcolor="rgba(255,60,60,0.12)",
+                        line_width=0,
+                        annotation_text=f"Max DD ${_max_dd:.0f}",
+                        annotation_position="top left",
+                        annotation_font_color="#ff6060",
+                    )
+                _fig_bk.update_layout(
+                    title="Bankroll Over Time", height=360, **PLOT_LAYOUT
+                )
+                st.plotly_chart(_fig_bk, use_container_width=True)
+
+                _sm1, _sm2, _sm3, _sm4, _sm5 = st.columns(5)
+                _sm1.metric("Starting Bankroll", f"${_STARTING_BK:,.0f}")
+                _sm2.metric("Current Bankroll",  f"${_current_bk:,.2f}",
+                            delta=f"${_current_bk - _STARTING_BK:+,.2f}")
+                _sm3.metric("Peak Bankroll",     f"${_peak_bk:,.2f}")
+                _sm4.metric("Max Drawdown $",    f"${_max_dd:,.2f}")
+                _sm5.metric("Max Drawdown %",    f"{_max_dd_pct:.1f}%")
+
     else:
         st.info("📊 Charts will appear once you have settled bets.")
 
@@ -1424,6 +1568,14 @@ def render_sport_tab(sport: str, use_live: bool):
         player_search = st.text_input("Search Player", placeholder="e.g. Ohtani",
                                       key=f"search_{sport}")
 
+        st.divider()
+        shop_alerts_only = st.toggle(
+            "🔔 Line shopping alerts only",
+            value=False,
+            key=f"shop_alerts_{sport}",
+            help="Show only props where a 5+ pt better line is available at another book.",
+        )
+
         # Reset button
         if st.button("🔄 Reset Filters", use_container_width=True, key=f"reset_{sport}"):
             # Write to shadow keys — read on next run before widgets instantiate
@@ -1434,14 +1586,23 @@ def render_sport_tab(sport: str, use_live: bool):
                     del st.session_state[k]
             st.rerun()
 
+    # ── Line shopping enrichment — add best_book / shop_alert columns to df ──
+    try:
+        from line_shopper import get_best_lines
+        df = get_best_lines(df)
+    except Exception:
+        pass
+
     cache_key = f"filtered_{sport}"
     _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
+    _shop_mask = (df["shop_alert"] == True) if (shop_alerts_only and "shop_alert" in df.columns) else pd.Series(True, index=df.index)
     filtered = df[
         (df["market"].isin(selected_markets))
         & (df["edge"] >= edge_threshold)
         & (df["team"].isin(selected_teams))
         & (df["player"].str.contains(player_search, case=False, na=False))
         & _conf_mask
+        & _shop_mask
     ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
@@ -1726,6 +1887,31 @@ def render_sport_tab(sport: str, use_live: bool):
 
         st.dataframe(display_df.style.map(highlight_edge, subset=["Edge"]),
                      use_container_width=True, hide_index=True, height=440)
+
+        # ── Line Shopping expander ────────────────────────────────────────────
+        try:
+            from line_shopper import build_shopping_summary
+            if "shop_alert" in filtered.columns:
+                _shop_df = build_shopping_summary(filtered)
+                _n_alerts = len(_shop_df)
+                _expander_label = (
+                    f"🔔 Line Shopping — {_n_alerts} alert(s) found"
+                    if _n_alerts > 0
+                    else "🔔 Line Shopping — no alerts (all books within 5 pts)"
+                )
+                with st.expander(_expander_label, expanded=(_n_alerts > 0)):
+                    if _n_alerts > 0:
+                        st.caption(
+                            "Lines 5+ pts better than current odds — check these books before betting"
+                        )
+                        st.dataframe(_shop_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(
+                            "No significant line differences detected. "
+                            "FanDuel and DraftKings are within 5 pts on all current props."
+                        )
+        except Exception:
+            pass
 
         col_dl, col_email, col_tg = st.columns(3)
         with col_dl:

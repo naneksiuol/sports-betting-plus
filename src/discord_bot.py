@@ -164,6 +164,88 @@ def send_grade_report(graded: int, wins: int, losses: int,
     return send(embeds=[embed])
 
 
+def send_retrain_summary(summary: dict) -> bool:
+    """
+    Send a Discord embed summarising a completed retrain run.
+
+    summary shape (from train_models.py):
+        {
+            "timestamp": str,
+            "model":      {before_accuracy, after_accuracy, before_cv_auc,
+                           after_cv_auc, n_samples, status},
+            "calibrator": {before_brier, after_brier, method, n_trained, status},
+        }
+    """
+    if not is_configured():
+        return False
+
+    model = summary.get("model", {})
+    cal   = summary.get("calibrator", {})
+    ts    = summary.get("timestamp", datetime.now(timezone.utc).isoformat())
+
+    def _fmt(val, fmt=".4f"):
+        return f"{val:{fmt}}" if val is not None else "n/a"
+
+    def _arrow(before, after, fmt=".4f", higher_is_better=True):
+        if before is None and after is None:
+            return "n/a"
+        b = f"{before:{fmt}}" if before is not None else "n/a"
+        a = f"{after:{fmt}}"  if after  is not None else "n/a"
+        if before is not None and after is not None:
+            delta = after - before
+            if higher_is_better:
+                emoji = "📈" if delta > 0.001 else ("📉" if delta < -0.001 else "➡️")
+            else:
+                emoji = "📈" if delta < -0.001 else ("📉" if delta > 0.001 else "➡️")
+            return f"{b} → {a} {emoji}"
+        return f"{b} → {a}"
+
+    model_status = model.get("status", "unknown")
+    cal_status   = cal.get("status", "unknown")
+
+    # Overall color: green if both ok, yellow if one insufficient, red if error
+    statuses = {model_status, cal_status}
+    if "error" in statuses:
+        color = 0xFF4444
+    elif statuses <= {"ok", "insufficient_data"}:
+        color = 0x00FF88 if "ok" in statuses else 0xFFD700
+    else:
+        color = 0xFFD700
+
+    model_lines = [
+        f"**Status:** {model_status}",
+        f"**Accuracy:** {_arrow(model.get('before_accuracy'), model.get('after_accuracy'))}",
+        f"**CV AUC:**   {_arrow(model.get('before_cv_auc'),   model.get('after_cv_auc'))}",
+        f"**Samples:**  {model.get('n_samples', 0)}",
+    ]
+    cal_lines = [
+        f"**Status:** {cal_status}",
+        f"**Brier:** {_arrow(cal.get('before_brier'), cal.get('after_brier'), higher_is_better=False)}",
+        f"**Method:** {cal.get('method') or 'n/a'}",
+        f"**Samples:** {cal.get('n_trained', 0)}",
+    ]
+
+    embed = {
+        "title": "🤖 Model Retrain Complete",
+        "color": color,
+        "timestamp": ts,
+        "fields": [
+            {
+                "name": "📊 Prop Model (LightGBM)",
+                "value": "\n".join(model_lines),
+                "inline": True,
+            },
+            {
+                "name": "🎯 Calibrator",
+                "value": "\n".join(cal_lines),
+                "inline": True,
+            },
+        ],
+        "footer": {"text": "Sports Betting Plus • Auto-Retrain Pipeline"},
+    }
+    return send(embeds=[embed])
+
+
 def send_pick_alert(player: str, prop: str, line: float, over_odds: int,
                     edge: float, kelly_stake: float, sport: str = "MLB",
                     is_steam: bool = False) -> bool:
