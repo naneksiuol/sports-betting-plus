@@ -679,15 +679,15 @@ def render_bet_tracker():
 
     # ── Auto-Grader ──────────────────────────────────────────────────────────
     st.markdown("### 🤖 Auto-Grade Pending Bets")
-    st.caption("Grades MLB bets automatically using the official MLB Stats API (free). NBA/NHL/WNBA bets must be graded manually.")
+    st.caption("Grades MLB, NBA, WNBA, and NHL bets automatically using free public stat APIs. Runs nightly via Task Scheduler (run setup_scheduler.bat to schedule).")
 
     pending_bets = [b for b in load_bets() if b["result"] == "pending"]
     past_pending_dates = sorted(set(
         b["date"] for b in pending_bets
         if b["date"] < datetime.now().strftime("%Y-%m-%d")
     ))
-    mlb_pending = [b for b in pending_bets
-                   if b["sport"] == "MLB" and b["date"] < datetime.now().strftime("%Y-%m-%d")]
+    all_gradeable = [b for b in pending_bets
+                     if b["date"] < datetime.now().strftime("%Y-%m-%d")]
 
     ag_col1, ag_col2 = st.columns([2, 1])
     with ag_col1:
@@ -695,20 +695,16 @@ def render_bet_tracker():
             st.info("✅ No past pending bets to grade." if pending_bets
                     else "No pending bets found.")
         else:
+            sports_in = ", ".join(sorted({b["sport"] for b in all_gradeable}))
             st.markdown(
-                f"**{len(mlb_pending)} MLB bet(s)** eligible for auto-grading "
+                f"**{len(all_gradeable)} bet(s)** eligible ({sports_in}) "
                 f"across **{len(past_pending_dates)} date(s)**: "
                 f"{', '.join(past_pending_dates)}"
             )
-            non_mlb = [b for b in pending_bets
-                       if b["sport"] != "MLB" and b["date"] < datetime.now().strftime("%Y-%m-%d")]
-            if non_mlb:
-                sports_list = ", ".join(sorted({b["sport"] for b in non_mlb}))
-                st.caption(f"⚠️ {len(non_mlb)} non-MLB bet(s) ({sports_list}) will be skipped — grade those manually above.")
 
     with ag_col2:
         grade_btn = st.button("⚡ Grade All Past Dates",
-                              disabled=len(mlb_pending) == 0,
+                              disabled=len(all_gradeable) == 0,
                               use_container_width=True,
                               type="primary")
 
@@ -754,6 +750,38 @@ def render_bet_tracker():
             st.rerun()
 
     st.divider()
+
+    # ── Discord Scheduling ────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📡 Discord Automation")
+    _dc_col1, _dc_col2 = st.columns([2, 1])
+    with _dc_col1:
+        from discord_bot import is_configured as _dc_ok
+        if _dc_ok():
+            st.success("✅ Discord webhook connected — daily slips enabled.")
+            st.caption("Run **setup_scheduler.bat** as Administrator to schedule automatic 9 AM daily slips. Or send one manually:")
+        else:
+            st.warning("⚠️ Discord not connected. Add `DISCORD_WEBHOOK_URL` to your `.env` file.")
+    with _dc_col2:
+        if st.button("📨 Send Slip Now", use_container_width=True,
+                     help="Scrapes live data and posts today's top plays to Discord immediately."):
+            from discord_bot import is_configured as _dc_ok2
+            if not _dc_ok2():
+                st.error("Discord webhook not configured.")
+            else:
+                with st.spinner("Scraping all sports and sending…"):
+                    try:
+                        import subprocess
+                        result = subprocess.run(
+                            [sys.executable, str(Path(__file__).parent.parent / "run_discord_slip.py")],
+                            capture_output=True, text=True, timeout=120
+                        )
+                        if result.returncode == 0:
+                            st.success("✅ Daily slip sent! Check your Discord channel.")
+                        else:
+                            st.error(f"Script error: {result.stderr[-500:] if result.stderr else 'unknown'}")
+                    except Exception as _e:
+                        st.error(f"Failed: {_e}")
 
     # ── Charts ──
     if stats["settled"] > 0:
@@ -874,6 +902,77 @@ def render_bet_tracker():
                 )
         else:
             st.caption("💡 Parlay ROI chart appears once you log parlays (tick 'Is Parlay' when logging).")
+
+        # ── Streak Tracker ────────────────────────────────────────────────────
+        st.divider()
+        st.markdown("### 🔥 Streak Tracker")
+        _streak_col1, _streak_col2, _streak_col3 = st.columns(3)
+
+        # Compute current streak
+        _streak_val = 0
+        _streak_type = "—"
+        for _b in reversed(settled):
+            _r = _b.get("result")
+            if _r == "push":
+                continue
+            if _streak_val == 0:
+                _streak_type = "W" if _r == "win" else "L"
+                _streak_val = 1
+            elif (_r == "win" and _streak_type == "W") or (_r == "loss" and _streak_type == "L"):
+                _streak_val += 1
+            else:
+                break
+
+        # Longest win streak
+        _best_streak, _cur, _cur_type = 0, 0, None
+        for _b in settled:
+            _r = _b.get("result")
+            if _r == "push":
+                continue
+            if _r == "win":
+                _cur = _cur + 1 if _cur_type == "W" else 1
+                _cur_type = "W"
+                _best_streak = max(_best_streak, _cur)
+            else:
+                _cur = _cur + 1 if _cur_type == "L" else 1
+                _cur_type = "L"
+
+        _streak_color = "normal" if _streak_type == "W" else "inverse"
+        _streak_col1.metric("Current Streak",
+                            f"{_streak_val}{_streak_type}" if _streak_val > 0 else "—",
+                            delta="🔥" if _streak_type == "W" and _streak_val >= 3 else None)
+        _streak_col2.metric("Best Win Streak", f"{_best_streak}W")
+        _avg_stake = (sum(b.get("stake", 0) for b in settled) / len(settled)) if settled else 0
+        _streak_col3.metric("Avg Stake", f"${_avg_stake:.2f}")
+
+        # ── Daily P&L Breakdown ───────────────────────────────────────────────
+        st.divider()
+        st.markdown("### 📅 Daily P&L Breakdown")
+        _daily: dict = {}
+        for _b in settled:
+            _d = _b.get("date", "?")
+            if _d not in _daily:
+                _daily[_d] = {"profit": 0.0, "wins": 0, "losses": 0, "bets": 0}
+            _daily[_d]["profit"] += float(_b.get("profit") or 0)
+            _daily[_d]["bets"]   += 1
+            if _b.get("result") == "win":
+                _daily[_d]["wins"] += 1
+            elif _b.get("result") == "loss":
+                _daily[_d]["losses"] += 1
+
+        if _daily:
+            _daily_rows = [
+                {
+                    "Date":    _d,
+                    "Bets":    v["bets"],
+                    "W":       v["wins"],
+                    "L":       v["losses"],
+                    "Win%":    f"{100*v['wins']/max(v['wins']+v['losses'],1):.0f}%",
+                    "P&L":     f"${v['profit']:+.2f}",
+                }
+                for _d, v in sorted(_daily.items(), reverse=True)
+            ]
+            st.dataframe(pd.DataFrame(_daily_rows), use_container_width=True, hide_index=True)
     else:
         st.info("📊 Charts will appear once you have settled bets.")
 
