@@ -1,254 +1,54 @@
 {
   "injuries_MLB": {
-    "dugan darnell": {
+    "travis macgregor": {
       "status": "Day-To-Day",
-      "type": "Hip",
-      "team": "DET"
+      "type": "Undisclosed",
+      "team": "NYY"
     },
-    "bailey horn": {
-      "status": "60-Day-IL",
-      "type": "Elbow",
-      "team": "DET"
+    "payton henry": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "NYY"
     },
-    "justin verlander": {
-      "status": "60-Day-IL",
-      "type": "Hip",
-      "team": "DET"
+    "eric reyzelman": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "NYY"
     },
-    "burch smith": {
+    "jasson dominguez": {
+      "status": "10-Day-IL",
+      "type": "Shoulder",
+      "team": "NYY"
+    },
+    "angel chivilli": {
       "status": "15-Day-IL",
       "type": "Shoulder",
-      "team": "DET"
+      "team": "NYY"
     },
-    "josue briceno": {
+    "hobie harris": {
       "status": "Day-To-Day",
-      "type": "Wrist",
-      "team": "DET"
-    },
-    "miles mastrobuoni": {
-      "status": "60-Day-IL",
-      "type": "Calf",
-      "team": "SEA"
-    },
-    "brendan donovan": {
-      "status": "10-Day-IL",
-      "type": "Groin",
-      "team": "SEA"
-    },
-    "teddy mcgraw": {
-      "status": "Day-To-Day",
-      "type": "Elbow",
-      "team": "SEA"
-    },
-    "carlos vargas": {
-      "status": "60-Day-IL",
-      "type": "Lat",
-      "team": "SEA"
-    },
-    "j.p. crawford": {
-      "status": "Day-To-Day",
-      "type": "Hand",
-      "team": "SEA"
-    },
-    "cole sands": {
-      "status": "15-Day-IL",
       "type": "Forearm",
-      "team": "MIN"
+      "team": "BOS"
     },
-    "byron buxton": {
-      "status": "Day-To-Day",
-      "type": "Shoulder",
-      "team": "MIN"
-    },
-    "matt canterino": {
-      "status": "Day-To-Day",
-      "type": "Shoulder",
-      "team": "MIN"
-    },
-    "julian merryweather": {
-      "status": "Day-To-Day",
-      "type": "Hamstring",
-      "team": "MIN"
-    },
-    "kendry rojas": {
-      "status": "15-Day-IL",
-      "type": "Elbow",
-      "team": "MIN"
-    },
-    "anthony simonelli": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "KC"
-    },
-    "jac caglianone": {
-      "status": "Day-To-Day",
-      "type": "Shoulder",
-      "team": "KC"
-    },
-    "stephen kolek": {
-      "status": "bereavement",
-      "type": "Personal",
-      "team": "KC"
-    },
-    "javier vaz": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "KC"
-    },
-    "tyson guerrero": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "KC"
-    },
-    "ixan henderson": {
-      "status": "Day-To-Day",
-      "type": "Elbow",
-      "team": "STL"
-    },
-    "jj wetherholt": {
-      "status": "Day-To-Day",
-      "type": "Groin",
-      "team": "STL"
-    },
-    "nathan church": {
-      "status": "10-Day-IL",
-      "type": "Shoulder",
-      "team": "STL"
-    },
-    "ramon urias": {
-      "status": "10-Day-IL",
-      "type": "Elbow",
-      "team": "STL"
-    },
-    "ryan fernandez": {
-      "status": "15-Day-IL",
-      "type": "Back",
-      "team": "STL"
-    },
-    "josh staumont": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "CIN"
-    },
-    "rhett lowder": {
-      "status": "15-Day-IL",
-      "type": "Shoulder",
-      "team": "CIN"
-    },
-    "connor burns": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "CIN"
-    },
-    "jose trevino": {
-      "status": "10-Day-IL",
-      "type": "Hamstring",
-      "team": "CIN"
-    },
-    "emilio pagan": {
-      "status": "15-Day-IL",
-      "type": "Hamstring",
-      "team": "CIN"
-    },
-    "matt shaw": {
-      "status": "10-Day-IL",
-      "type": "Back",
-      "team": "CHC"
-    },
-    "jeff brigham": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "CHC"
-    },
-    "jaxon wiggins": {
-      "status": "Day-To-Day",
-      "type": "Elbow",
-      "team": "CHC"
-    },
-    "matthew boyd": {
+    "garrett whitlock": {
       "status": "15-Day-IL",
       "type": "Knee",
-      "team": "CHC"
+      "team": "BOS"
     },
-    "riley martin": {
-      "status": "15-Day-IL",
-      "type": "Elbow",
-      "team": "CHC"
-    },
-    "reiver sanmartin": {
-      "status": "60-Day-IL",
-      "type": "Hip",
-      "team": "SF"
-    },
-    "jason foley": {
-      "status": "60-Day-IL",
-      "type": "Shoulder",
-      "team": "SF"
-    },
-    "harrison bader": {
+    "roman anthony": {
       "status": "10-Day-IL",
-      "type": "Foot",
-      "team": "SF"
+      "type": "Finger",
+      "team": "BOS"
     },
-    "tyler mahle": {
-      "status": "15-Day-IL",
-      "type": "Hamstring",
-      "team": "SF"
-    },
-    "jared oliva": {
-      "status": "60-Day-IL",
-      "type": "Wrist",
-      "team": "SF"
-    },
-    "lenyn sosa": {
-      "status": "10-Day-IL",
-      "type": "Wrist",
-      "team": "TOR"
-    },
-    "fernando perez": {
-      "status": "developmental list",
-      "type": "Not Injury Related",
-      "team": "TOR"
-    },
-    "cj stubbs": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "TOR"
-    },
-    "javen coleman": {
-      "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "TOR"
-    },
-    "daulton varsho": {
-      "status": "Day-To-Day",
-      "type": "Wrist",
-      "team": "TOR"
-    },
-    "dylan beavers": {
+    "nick sogard": {
       "status": "10-Day-IL",
       "type": "Oblique",
-      "team": "BAL"
+      "team": "BOS"
     },
-    "cade povich": {
-      "status": "15-Day-IL",
-      "type": "Elbow",
-      "team": "BAL"
-    },
-    "yaramil hiraldo": {
+    "johan oviedo": {
       "status": "60-Day-IL",
-      "type": "Shoulder",
-      "team": "BAL"
-    },
-    "samuel basallo": {
-      "status": "Day-To-Day",
-      "type": "Abdomen",
-      "team": "BAL"
-    },
-    "chris bassitt": {
-      "status": "Day-To-Day",
-      "type": "Back",
-      "team": "BAL"
+      "type": "Elbow",
+      "team": "BOS"
     },
     "carson demartini": {
       "status": "Day-To-Day",
@@ -300,12 +100,12 @@
       "type": "Elbow",
       "team": "CHW"
     },
-    "blake burkhalter": {
+    "michael harris ii": {
       "status": "Day-To-Day",
       "type": "Back",
       "team": "ATL"
     },
-    "michael harris ii": {
+    "blake burkhalter": {
       "status": "Day-To-Day",
       "type": "Back",
       "team": "ATL"
@@ -350,6 +150,106 @@
       "type": "Elbow",
       "team": "PIT"
     },
+    "daulton varsho": {
+      "status": "Day-To-Day",
+      "type": "Wrist",
+      "team": "TOR"
+    },
+    "lenyn sosa": {
+      "status": "10-Day-IL",
+      "type": "Wrist",
+      "team": "TOR"
+    },
+    "fernando perez": {
+      "status": "developmental list",
+      "type": "Not Injury Related",
+      "team": "TOR"
+    },
+    "cj stubbs": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "TOR"
+    },
+    "javen coleman": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "TOR"
+    },
+    "samuel basallo": {
+      "status": "Day-To-Day",
+      "type": "Abdomen",
+      "team": "BAL"
+    },
+    "dylan beavers": {
+      "status": "10-Day-IL",
+      "type": "Oblique",
+      "team": "BAL"
+    },
+    "cade povich": {
+      "status": "15-Day-IL",
+      "type": "Elbow",
+      "team": "BAL"
+    },
+    "yaramil hiraldo": {
+      "status": "60-Day-IL",
+      "type": "Shoulder",
+      "team": "BAL"
+    },
+    "chris bassitt": {
+      "status": "Day-To-Day",
+      "type": "Back",
+      "team": "BAL"
+    },
+    "dugan darnell": {
+      "status": "Day-To-Day",
+      "type": "Hip",
+      "team": "DET"
+    },
+    "bailey horn": {
+      "status": "60-Day-IL",
+      "type": "Elbow",
+      "team": "DET"
+    },
+    "justin verlander": {
+      "status": "60-Day-IL",
+      "type": "Hip",
+      "team": "DET"
+    },
+    "burch smith": {
+      "status": "15-Day-IL",
+      "type": "Shoulder",
+      "team": "DET"
+    },
+    "josue briceno": {
+      "status": "Day-To-Day",
+      "type": "Wrist",
+      "team": "DET"
+    },
+    "j.p. crawford": {
+      "status": "Day-To-Day",
+      "type": "Hand",
+      "team": "SEA"
+    },
+    "miles mastrobuoni": {
+      "status": "60-Day-IL",
+      "type": "Calf",
+      "team": "SEA"
+    },
+    "brendan donovan": {
+      "status": "10-Day-IL",
+      "type": "Groin",
+      "team": "SEA"
+    },
+    "teddy mcgraw": {
+      "status": "Day-To-Day",
+      "type": "Elbow",
+      "team": "SEA"
+    },
+    "carlos vargas": {
+      "status": "60-Day-IL",
+      "type": "Lat",
+      "team": "SEA"
+    },
     "janson junk": {
       "status": "15-Day-IL",
       "type": "Lower Leg",
@@ -375,6 +275,11 @@
       "type": "Hamstring",
       "team": "MIA"
     },
+    "chandler simpson": {
+      "status": "Day-To-Day",
+      "type": "Thumb",
+      "team": "TB"
+    },
     "austin vernon": {
       "status": "Day-To-Day",
       "type": "Elbow",
@@ -383,11 +288,6 @@
     "tre' morgan": {
       "status": "Day-To-Day",
       "type": "Undisclosed",
-      "team": "TB"
-    },
-    "chandler simpson": {
-      "status": "Day-To-Day",
-      "type": "Thumb",
       "team": "TB"
     },
     "michael grove": {
@@ -450,176 +350,226 @@
       "type": "Shoulder",
       "team": "ATH"
     },
-    "spencer giesting": {
+    "byron buxton": {
       "status": "Day-To-Day",
-      "type": "Undisclosed",
-      "team": "ARI"
+      "type": "Shoulder",
+      "team": "MIN"
     },
-    "ildemaro vargas": {
+    "cole sands": {
+      "status": "15-Day-IL",
+      "type": "Forearm",
+      "team": "MIN"
+    },
+    "matt canterino": {
       "status": "Day-To-Day",
-      "type": "Thigh",
-      "team": "ARI"
+      "type": "Shoulder",
+      "team": "MIN"
     },
-    "taylor clarke": {
-      "status": "Bereavement",
-      "type": "Personal",
-      "team": "ARI"
+    "julian merryweather": {
+      "status": "Day-To-Day",
+      "type": "Hamstring",
+      "team": "MIN"
     },
-    "jordan lawlar": {
-      "status": "60-Day-IL",
-      "type": "Wrist",
-      "team": "ARI"
-    },
-    "a.j. puk": {
-      "status": "60-Day-IL",
+    "kendry rojas": {
+      "status": "15-Day-IL",
       "type": "Elbow",
-      "team": "ARI"
+      "team": "MIN"
     },
-    "tyler baum": {
+    "jac caglianone": {
+      "status": "Day-To-Day",
+      "type": "Shoulder",
+      "team": "KC"
+    },
+    "anthony simonelli": {
       "status": "Day-To-Day",
       "type": "Undisclosed",
-      "team": "WSH"
+      "team": "KC"
     },
-    "jake irvin": {
+    "stephen kolek": {
+      "status": "bereavement",
+      "type": "Personal",
+      "team": "KC"
+    },
+    "javier vaz": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "KC"
+    },
+    "tyson guerrero": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "KC"
+    },
+    "jj wetherholt": {
+      "status": "Day-To-Day",
+      "type": "Groin",
+      "team": "STL"
+    },
+    "ixan henderson": {
+      "status": "Day-To-Day",
+      "type": "Elbow",
+      "team": "STL"
+    },
+    "nathan church": {
+      "status": "10-Day-IL",
+      "type": "Shoulder",
+      "team": "STL"
+    },
+    "ramon urias": {
+      "status": "10-Day-IL",
+      "type": "Elbow",
+      "team": "STL"
+    },
+    "ryan fernandez": {
+      "status": "15-Day-IL",
+      "type": "Back",
+      "team": "STL"
+    },
+    "rhett lowder": {
       "status": "15-Day-IL",
       "type": "Shoulder",
-      "team": "WSH"
+      "team": "CIN"
     },
-    "josiah gray": {
-      "status": "60-Day-IL",
-      "type": "Elbow",
-      "team": "WSH"
-    },
-    "trevor williams": {
-      "status": "60-Day-IL",
-      "type": "Elbow",
-      "team": "WSH"
-    },
-    "jarlin susana": {
+    "connor burns": {
       "status": "Day-To-Day",
-      "type": "Lat",
-      "team": "WSH"
+      "type": "Undisclosed",
+      "team": "CIN"
+    },
+    "josh staumont": {
+      "status": "Day-To-Day",
+      "type": "Undisclosed",
+      "team": "CIN"
+    },
+    "jose trevino": {
+      "status": "10-Day-IL",
+      "type": "Hamstring",
+      "team": "CIN"
+    },
+    "emilio pagan": {
+      "status": "15-Day-IL",
+      "type": "Hamstring",
+      "team": "CIN"
+    },
+    "luis curvelo": {
+      "status": "Day-To-Day",
+      "type": "Thigh",
+      "team": "TEX"
+    },
+    "cole winn": {
+      "status": "15-Day-IL",
+      "type": "Arm",
+      "team": "TEX"
+    },
+    "danny jansen": {
+      "status": "10-Day-IL",
+      "type": "Forearm",
+      "team": "TEX"
+    },
+    "josh smith": {
+      "status": "10-Day-IL",
+      "type": "Illness",
+      "team": "TEX"
+    },
+    "chris martin": {
+      "status": "15-Day-IL",
+      "type": "Shoulder",
+      "team": "TEX"
+    },
+    "carlos hernandez": {
+      "status": "Day-To-Day",
+      "type": "Leg",
+      "team": "CLE"
+    },
+    "gabriel arias": {
+      "status": "60-Day-IL",
+      "type": "Hamstring",
+      "team": "CLE"
+    },
+    "erik sabrowski": {
+      "status": "15-Day-IL",
+      "type": "Elbow",
+      "team": "CLE"
     }
   },
-  "_ts": "2026-06-06T20:43:25.498734",
+  "_ts": "2026-06-07T06:41:31.234115",
   "mlb_pitchers": {
-    "DET": "Keider Montero",
-    "SEA": "Bryce Miller",
-    "MIN": "Joe Ryan",
-    "KC": "Luinder Avila",
-    "STL": "Matthew Liberatore",
-    "CIN": "Nick Lodolo",
-    "CHC": "Ben Brown",
-    "SF": "Landen Roupp",
-    "TOR": "Braydon Fisher",
-    "BAL": "Kyle Bradish",
-    "PHI": "Andrew Painter",
-    "CWS": "Brandon Eisert",
-    "AZ": "Eduardo Rodriguez",
-    "WSH": "Zack Littell",
-    "HOU": "Tatsuya Imai",
-    "ATH": "Kade Morris",
-    "ATL": "Spencer Strider",
-    "PIT": "Braxton Ashcraft",
-    "MIA": "Lake Bachar",
-    "TB": "Shane McClanahan",
-    "TEX": "Jack Leiter",
-    "CLE": "Tanner Bibee",
-    "COL": "Zach Agnos",
-    "MIL": "Jacob Misiorowski",
-    "LAD": "Yoshinobu Yamamoto",
-    "LAA": "Jack Kochanowicz",
-    "SD": "Griffin Canning",
-    "NYM": "Nolan McLean",
-    "NYY": "Will Warren",
-    "BOS": "Ranger Suarez"
+    "ATL": "Bryce Elder",
+    "PIT": "Bubba Chandler",
+    "PHI": "Aaron Nola",
+    "CWS": "Tyler Gilbert",
+    "NYY": "Cam Schlittler",
+    "BOS": "Ranger Suarez",
+    "TOR": "Kevin Gausman",
+    "BAL": "Shane Baz",
+    "DET": "Jack Flaherty",
+    "SEA": "Luis Castillo",
+    "MIA": "Sandy Alcantara",
+    "TB": "Griffin Jax",
+    "HOU": "Mike Burrows",
+    "ATH": "Gage Jump",
+    "MIN": "Connor Prielipp",
+    "KC": "Noah Cameron",
+    "STL": "Michael McGreevy",
+    "CIN": "Rhett Lowder",
+    "TEX": "Jacob deGrom",
+    "CLE": "Joey Cantillo",
+    "COL": "Kyle Freeland",
+    "MIL": "Shane Drohan",
+    "AZ": "Michael Soroka",
+    "WSH": "Cade Cavalli",
+    "LAD": "Emmet Sheehan",
+    "LAA": "Jos\u00e9 Soriano",
+    "SD": "Randy V\u00e1squez",
+    "NYM": "Huascar Brazob\u00e1n",
+    "CHC": "Jameson Taillon",
+    "SF": "Trevor McDonald"
   },
   "injuries_NBA": {},
   "injuries_WNBA": {
-    "liatu king": {
-      "status": "Day-To-Day",
-      "type": "Coach's Decision",
-      "team": "MIN"
-    },
-    "eliska hamzova": {
+    "temi fagbenle": {
       "status": "Out",
-      "type": "Coach's Decision",
-      "team": "MIN"
+      "type": "Shoulder",
+      "team": "TOR"
     },
-    "napheesa collier": {
+    "kiki rice": {
       "status": "Out",
       "type": "Ankle",
-      "team": "MIN"
+      "team": "TOR"
     },
-    "dorka juhasz": {
+    "isabelle harrison": {
       "status": "Out",
-      "type": "Foot",
-      "team": "MIN"
+      "type": "Thumb",
+      "team": "TOR"
     },
-    "emma cechova": {
-      "status": "Out",
-      "type": "Knee",
-      "team": "MIN"
-    },
-    "lexie brown": {
-      "status": "Day-To-Day",
-      "type": "Not Injury Related",
-      "team": "SEA"
-    },
-    "ezi magbegor": {
-      "status": "Out",
-      "type": "Foot",
-      "team": "SEA"
-    },
-    "chennedy carter": {
-      "status": "Day-To-Day",
-      "type": "Leg",
-      "team": "LV"
-    },
-    "dana evans": {
-      "status": "Out",
-      "type": "Leg",
-      "team": "LV"
-    },
-    "ashten prechtel": {
-      "status": "Day-To-Day",
-      "type": "Coach's Decision",
-      "team": "GS"
-    },
-    "miela sowah": {
-      "status": "Out",
-      "type": "Coach's Decision",
-      "team": "GS"
-    },
-    "iliana rupert": {
-      "status": "Out",
-      "type": "Not Injury Related",
-      "team": "GS"
-    },
-    "amy okonkwo": {
-      "status": "Out",
-      "type": "Coach's Decision",
-      "team": "ATL"
-    },
-    "brionna jones": {
+    "gabriela jaquez": {
       "status": "Out",
       "type": "Knee",
-      "team": "ATL"
+      "team": "CHI"
     },
-    "darianna littlepage-buggs": {
+    "courtney vandersloot": {
+      "status": "Out",
+      "type": "Knee",
+      "team": "CHI"
+    },
+    "dijonai carrington": {
+      "status": "Out",
+      "type": "Foot",
+      "team": "CHI"
+    },
+    "rickea jackson": {
+      "status": "Out",
+      "type": "Knee",
+      "team": "CHI"
+    },
+    "sarah ashlee barker": {
       "status": "Day-To-Day",
-      "type": "Coach's Decision",
-      "team": "WSH"
+      "type": "Quadriceps",
+      "team": "POR"
     },
-    "anneli maley": {
-      "status": "Out",
-      "type": "Coach's Decision",
-      "team": "NY"
-    },
-    "sabrina ionescu": {
-      "status": "Out",
-      "type": "Back",
-      "team": "NY"
+    "karlie samuelson": {
+      "status": "Day-To-Day",
+      "type": "Achilles",
+      "team": "POR"
     }
   },
   "injuries_NHL": {}
