@@ -462,8 +462,8 @@ def load_data(sport: str, use_live: bool):
         df = load_scraped_data(sport)
         if not df.empty:
             return df, "scraped"
-    except Exception:
-        pass
+    except Exception as _scrape_err:
+        st.warning(f"{sport} scraper error: {_scrape_err}")
 
     # Last resort: static CSV for MLB hits only
     if sport == "MLB":
@@ -1419,6 +1419,12 @@ def render_sport_tab(sport: str, use_live: bool):
     df, data_source = load_data(sport, use_live)
 
     if df.empty:
+        with st.sidebar:
+            st.markdown(f"**{cfg['icon']} {sport} Filters**")
+            st.markdown("**Prop Markets**")
+            for mkt, label in cfg["market_labels"].items():
+                st.checkbox(f"{label} *(no data yet)*", key=f"mkt_chk_{sport}_{mkt}", disabled=True)
+            st.divider()
         if data_source == "unavailable":
             st.info(f"No live data for {sport} right now. Props post closer to game time.")
         else:
