@@ -11,7 +11,7 @@ echo.
 
 REM 1. Pull latest code
 echo [1/3] Pulling latest code from GitHub...
-git pull origin claude/adoring-curie-I6KnD
+git pull origin main
 if %errorlevel% neq 0 (
     echo [ERROR] git pull failed. Check your internet connection.
     pause
