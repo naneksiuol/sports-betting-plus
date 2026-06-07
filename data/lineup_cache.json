@@ -501,7 +501,7 @@
       "team": "WSH"
     }
   },
-  "_ts": "2026-06-06T18:35:03.637794",
+  "_ts": "2026-06-06T20:43:25.498734",
   "mlb_pitchers": {
     "DET": "Keider Montero",
     "SEA": "Bryce Miller",
@@ -525,14 +525,14 @@
     "TB": "Shane McClanahan",
     "TEX": "Jack Leiter",
     "CLE": "Tanner Bibee",
-    "NYY": "Will Warren",
-    "BOS": "Ranger Suarez",
     "COL": "Zach Agnos",
     "MIL": "Jacob Misiorowski",
     "LAD": "Yoshinobu Yamamoto",
     "LAA": "Jack Kochanowicz",
     "SD": "Griffin Canning",
-    "NYM": "Nolan McLean"
+    "NYM": "Nolan McLean",
+    "NYY": "Will Warren",
+    "BOS": "Ranger Suarez"
   },
   "injuries_NBA": {},
   "injuries_WNBA": {
@@ -581,12 +581,12 @@
       "type": "Leg",
       "team": "LV"
     },
-    "miela sowah": {
-      "status": "Out",
+    "ashten prechtel": {
+      "status": "Day-To-Day",
       "type": "Coach's Decision",
       "team": "GS"
     },
-    "ashten prechtel": {
+    "miela sowah": {
       "status": "Out",
       "type": "Coach's Decision",
       "team": "GS"
@@ -607,19 +607,19 @@
       "team": "ATL"
     },
     "darianna littlepage-buggs": {
-      "status": "Out",
+      "status": "Day-To-Day",
       "type": "Coach's Decision",
       "team": "WSH"
+    },
+    "anneli maley": {
+      "status": "Out",
+      "type": "Coach's Decision",
+      "team": "NY"
     },
     "sabrina ionescu": {
       "status": "Out",
       "type": "Back",
       "team": "NY"
-    },
-    "caitlin clark": {
-      "status": "Day-To-Day",
-      "type": "Back",
-      "team": "IND"
     }
   },
   "injuries_NHL": {}
