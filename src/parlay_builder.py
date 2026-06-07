@@ -164,9 +164,12 @@ def get_top_candidates(df: pd.DataFrame, min_odds: int = -500,
 
     # If market column exists, group by it for diversity; otherwise just head(n)
     if "market" in pool.columns:
+        # Use a row-index approach to avoid pandas dropping the groupby key column
+        _kept_idx = []
+        for _mkt, _grp in pool.groupby("market", sort=False):
+            _kept_idx.extend(_grp.index[:per_market].tolist())
         selected = (
-            pool.groupby("market", group_keys=False)
-                .apply(lambda g: g.head(per_market))
+            pool.loc[_kept_idx]
                 .sort_values("edge", ascending=False)
                 .head(n)
         )
