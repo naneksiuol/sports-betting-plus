@@ -162,13 +162,16 @@ def get_top_candidates(df: pd.DataFrame, min_odds: int = -500,
     pool = df[(df["over_odds"] >= min_odds) & (df["over_odds"] <= max_odds)].copy()
     pool = pool.sort_values("edge", ascending=False)
 
-    # Take top per_market rows per market, then re-sort and cap at n
-    selected = (
-        pool.groupby("market", group_keys=False)
-            .apply(lambda g: g.head(per_market))
-            .sort_values("edge", ascending=False)
-            .head(n)
-    )
+    # If market column exists, group by it for diversity; otherwise just head(n)
+    if "market" in pool.columns:
+        selected = (
+            pool.groupby("market", group_keys=False)
+                .apply(lambda g: g.head(per_market))
+                .sort_values("edge", ascending=False)
+                .head(n)
+        )
+    else:
+        selected = pool.head(n)
     return selected
 
 

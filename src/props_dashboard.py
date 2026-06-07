@@ -1799,13 +1799,28 @@ def render_sport_tab(sport: str, use_live: bool):
         st.caption("Top 5 per prop market within -300 to +300 odds — sorted by edge, best value first.")
         if report["top10"]:
             top_df = pd.DataFrame(report["top10"])
+            # Ensure required columns exist with safe fallbacks
+            if "market" not in top_df.columns:
+                top_df["market"] = top_df.get("prop_label", top_df.get("prop", "unknown"))
+            if "team" not in top_df.columns:
+                top_df["team"] = ""
+            if "book_implied" not in top_df.columns:
+                top_df["book_implied"] = top_df.get("implied", 0.5)
+            if "edge" not in top_df.columns:
+                top_df["edge"] = 0.0
+            if "fair_est" not in top_df.columns:
+                top_df["fair_est"] = top_df.get("book_implied", 0.5)
             top_df["prop"] = top_df["market"].map(lambda k: market_labels.get(k, k))
-            top_df = top_df[["player", "prop", "line", "team", "over_odds", "book_implied", "edge"]]
-            top_df.columns = ["Player", "Prop", "Line", "Team/Game", "Odds", "Book Implied", "Edge"]
-            top_df["Odds"] = top_df["Odds"].apply(lambda x: f"+{int(x)}" if int(x) > 0 else f"{int(x)}")
-            top_df["Book Implied"] = top_df["Book Implied"].apply(lambda x: f"{x:.1%}")
-            top_df["Edge"] = top_df["Edge"].apply(lambda x: f"{x:.1%}")
-            st.dataframe(top_df, use_container_width=True, hide_index=True)
+            _display_cols = [c for c in ["player", "prop", "line", "team", "over_odds", "book_implied", "edge"] if c in top_df.columns]
+            disp_df = top_df[_display_cols].copy()
+            disp_df.columns = ["Player", "Prop", "Line", "Team/Game", "Odds", "Book Implied", "Edge"][:len(_display_cols)]
+            if "Odds" in disp_df.columns:
+                disp_df["Odds"] = disp_df["Odds"].apply(lambda x: f"+{int(x)}" if int(x) > 0 else f"{int(x)}")
+            if "Book Implied" in disp_df.columns:
+                disp_df["Book Implied"] = disp_df["Book Implied"].apply(lambda x: f"{x:.1%}")
+            if "Edge" in disp_df.columns:
+                disp_df["Edge"] = disp_df["Edge"].apply(lambda x: f"{x:.1%}")
+            st.dataframe(disp_df, use_container_width=True, hide_index=True)
 
             # ── Manual Parlay Builder ─────────────────────────────────────────
             st.markdown("#### 🛠️ Manual Parlay Builder")
