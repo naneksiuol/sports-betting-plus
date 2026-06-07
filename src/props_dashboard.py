@@ -471,6 +471,21 @@ def load_data(sport: str, use_live: bool):
     except Exception as _scrape_err:
         st.warning(f"{sport} scraper error: {_scrape_err}")
 
+    # Fallback: read locally-scraped cache pushed to repo by scheduled task
+    try:
+        _cache_path = Path(__file__).parent.parent / "data" / f"props_cache_{sport.lower()}.json"
+        if _cache_path.exists():
+            import json as _json
+            _payload = _json.loads(_cache_path.read_text(encoding="utf-8"))
+            _records = _payload.get("data", [])
+            if _records:
+                _cached_df = pd.DataFrame(_records)
+                _scraped_at = _payload.get("scraped_at", "")
+                _source_label = f"cached · {_scraped_at[:16]}" if _scraped_at else "cached"
+                return _cached_df, _source_label
+    except Exception:
+        pass
+
     # Last resort: static CSV for MLB hits only
     if sport == "MLB":
         return load_static_mlb(), "static"

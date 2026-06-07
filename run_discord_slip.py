@@ -4,6 +4,9 @@ Sports Betting Plus — Scheduled Discord Daily Slip
 Run via Windows Task Scheduler each morning (e.g. 9:00 AM) to automatically
 post today's top props and parlays to Discord.
 
+Also saves props_cache_{sport}.json for each sport so Streamlit Cloud
+can display live data even when Action Network blocks cloud IPs.
+
 One-time setup (run setup_scheduler.bat as Administrator, or manually):
     schtasks /Create /TN "SBP_DiscordSlip" /TR "C:\\Users\\kenan\\sports-betting-plus\\run_discord_slip.bat" /SC DAILY /ST 09:00 /RL HIGHEST /F
 
@@ -13,6 +16,8 @@ Manual run:
 
 import sys
 import os
+import json
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -31,24 +36,68 @@ except ImportError:
                 k, _, v = _line.partition("=")
                 os.environ.setdefault(k.strip(), v.strip())
 
+DATA_DIR = Path(__file__).parent / "data"
+
+
+def save_props_cache(sport: str, df) -> bool:
+    """Save scraped props to data/props_cache_{sport}.json for Streamlit Cloud fallback."""
+    try:
+        cache_path = DATA_DIR / f"props_cache_{sport.lower()}.json"
+        records = df.to_dict(orient="records")
+        payload = {
+            "scraped_at": datetime.now().isoformat(),
+            "sport": sport,
+            "rows": len(records),
+            "data": records,
+        }
+        cache_path.write_text(json.dumps(payload, default=str), encoding="utf-8")
+        print(f"    [SAVED] {len(records)} rows to {cache_path.name}")
+        return True
+    except Exception as e:
+        print(f"    [WARN] Cache save failed: {e}")
+        return False
+
+
+def push_cache_to_github():
+    """Git add/commit/push the props cache files so Streamlit Cloud picks them up."""
+    try:
+        repo = Path(__file__).parent
+        cache_files = list(DATA_DIR.glob("props_cache_*.json"))
+        if not cache_files:
+            return
+        paths = [str(f) for f in cache_files]
+        subprocess.run(["git", "add"] + paths, cwd=repo, check=True, capture_output=True)
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=repo, capture_output=True
+        )
+        if result.returncode != 0:  # changes staged
+            msg = f"chore: refresh props cache {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            subprocess.run(["git", "commit", "-m", msg], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "push", "origin", "main"], cwd=repo, check=True, capture_output=True)
+            print(f"    [OK] Props cache pushed to GitHub ({len(cache_files)} files)")
+        else:
+            print("    [INFO] No cache changes to push.")
+    except Exception as e:
+        print(f"    [WARN] GitHub push failed: {e}")
+
 
 def main():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Discord daily slip starting…")
 
     from discord_bot import is_configured, send_daily_slip, send
-
-    if not is_configured():
-        print("❌ DISCORD_WEBHOOK_URL not set in .env — aborting.")
-        sys.exit(1)
-
     from scraper import scrape_props
-    from parlay_builder import get_top_candidates, build_parlay_report
+    from parlay_builder import build_parlay_report
     from bet_tracker import get_stats
+
+    discord_ok = is_configured()
+    if not discord_ok:
+        print("⚠️  DISCORD_WEBHOOK_URL not set — will still refresh cache.")
 
     SPORTS = ["MLB", "NBA", "WNBA", "NHL"]
     record = get_stats()
-
     all_sent = 0
+
     for sport in SPORTS:
         print(f"  Scraping {sport}…")
         try:
@@ -57,39 +106,45 @@ def main():
                 print(f"    No props found for {sport} today — skipping.")
                 continue
 
-            # Filter to positive-edge plays
-            if "edge" in df.columns:
-                df_edge = df[df["edge"] > 0].copy()
-            else:
-                df_edge = df.copy()
+            # Always save cache regardless of Discord status
+            save_props_cache(sport, df)
 
+            if not discord_ok:
+                continue
+
+            # Filter to positive-edge plays for Discord
+            df_edge = df[df["edge"] > 0].copy() if "edge" in df.columns else df.copy()
             if df_edge.empty:
-                print(f"    No positive-edge props for {sport} — skipping.")
+                print(f"    No positive-edge props for {sport} — skipping Discord.")
                 continue
 
             picks = df_edge.sort_values("edge", ascending=False).to_dict("records")
             print(f"    {len(picks)} positive-edge props — building report…")
 
-            # Build parlay report for top parlays
             report = build_parlay_report(df_edge, stake=10.0)
             parlays = report.get("parlays", {})
 
             ok = send_daily_slip(picks, parlays=parlays, record=record, sport=sport)
             if ok:
-                print(f"    ✅ {sport} slip sent to Discord.")
+                print(f"    [OK] {sport} slip sent to Discord.")
                 all_sent += 1
             else:
-                print(f"    ⚠️ Discord send failed for {sport}.")
+                print(f"    [WARN] Discord send failed for {sport}.")
 
         except Exception as e:
-            print(f"    ❌ {sport} error: {e}")
+            print(f"    [ERR] {sport} error: {e}")
 
-    if all_sent == 0:
-        # Send a "no plays today" fallback message
+    # Push all cache files to GitHub so Streamlit Cloud sees them
+    print("\n  Pushing cache to GitHub…")
+    push_cache_to_github()
+
+    if discord_ok and all_sent == 0:
         send(content=f"📅 **{datetime.now().strftime('%B %d, %Y')}** — No positive-edge plays found across MLB/NBA/WNBA/NHL today. Check back tomorrow!")
         print("Sent 'no plays' fallback message.")
-    else:
-        print(f"\n✅ Done — {all_sent} sport slip(s) sent to Discord.")
+    elif discord_ok:
+        print(f"\n[DONE] {all_sent} sport slip(s) sent to Discord.")
+
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Finished.")
 
 
 if __name__ == "__main__":
