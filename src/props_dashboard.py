@@ -428,6 +428,12 @@ def preload_all_sports_parallel(use_live: bool = False):
     st.session_state["_sports_preloaded"] = True
 
 
+@st.cache_data(ttl=300)
+def _get_game_lines_cached(sport: str) -> "pd.DataFrame":
+    from odds_client import get_game_lines
+    return get_game_lines(sport)
+
+
 @st.cache_data(ttl=3600)
 def load_static_mlb() -> pd.DataFrame:
     data_path = Path(__file__).parent.parent / "data" / "hits_board-1.csv"
@@ -1153,7 +1159,7 @@ def render_clv_tab():
     clv_color = "#00ff88" if (avg_clv or 0) > 0 else "#ff6060"
     h1.metric("Avg CLV", f"{avg_clv:+.2f}%" if avg_clv is not None else "—",
               help="Average Closing Line Value. Positive = you consistently beat the closing market.")
-    h2.metric("CLV Positive Rate", f"{clv_pos_rate:.0f}%" if clv_pos_rate else "—",
+    h2.metric("CLV Positive Rate", f"{clv_pos_rate:.0f}%" if clv_pos_rate is not None else "—",
               help="% of bets where you beat the closing line. >50% = long-term edge.")
     h3.metric("Bets with CLV", len(clv_bets))
     h4.metric("Actual ROI", f"{model_edge:+.1f}%",
@@ -1715,10 +1721,7 @@ def render_sport_tab(sport: str, use_live: bool):
     with st.expander("📋 Today's Game Lines (Moneyline · Spread · Total)", expanded=False):
         try:
             from odds_client import get_game_lines
-            @st.cache_data(ttl=300)
-            def _cached_game_lines(sport_key):
-                return get_game_lines(sport_key)
-            gl = _cached_game_lines(sport)
+            gl = _get_game_lines_cached(sport)
         except Exception:
             gl = pd.DataFrame()
 
