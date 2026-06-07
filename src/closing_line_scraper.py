@@ -105,7 +105,8 @@ def _fetch_closing_odds_for_game(game_id: int) -> dict:
             if not pid:
                 continue
             pid_str = str(pid)
-            pinfo   = players.get(pid_str) or players.get(int(pid_str), {}) or {}
+            pid_int = int(pid_str) if pid_str.isdigit() else None
+            pinfo   = players.get(pid_str) or (players.get(pid_int, {}) if pid_int is not None else {}) or {}
             name    = pinfo.get("full_name", "")
             if not name:
                 continue
@@ -144,7 +145,7 @@ def fetch_closing_odds(sport: str) -> dict:
     for game in games:
         status = game.get("status", "").lower()
         # Only use games that are final or in-progress (late) as closing reference
-        if status not in ("complete", "final", "in-progress", "halftime"):
+        if status not in ("complete", "completed", "final", "in-progress", "halftime"):
             continue
         gid     = game["id"]
         g_odds  = _fetch_closing_odds_for_game(gid)
@@ -216,7 +217,7 @@ def update_closing_lines(dry_run: bool = False) -> int:
             player  = bet.get("player", "")
             market  = _extract_market_from_prop(bet.get("prop", ""))
             line    = float(bet.get("line", 0.5))
-            bet_odds = int(bet.get("odds", 0))
+            bet_odds = int(bet.get("odds") or 0)
 
             # 1. Try live closing odds
             closing_odds = None

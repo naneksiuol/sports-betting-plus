@@ -2,11 +2,17 @@ import os
 import sys
 from pathlib import Path
 
+_env_file = Path(__file__).parent.parent / ".env"
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent.parent / ".env")
+    load_dotenv(_env_file, override=True)
 except ImportError:
-    pass
+    if _env_file.exists():
+        for _line in _env_file.read_text(encoding="utf-8").splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 try:
     import streamlit as _st_tmp
@@ -521,7 +527,7 @@ def render_bet_tracker():
             _rec = recommended_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
             _clv_note = f" | CLV avg: {_clv_avg:+.1f}% (last 30)" if _clv_avg is not None else " | CLV: no history yet"
             st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% · {_rec['kelly_multiplier']:.0%} Kelly) | EV: ${_rec['ev_on_stake']:+.2f}{_clv_note}")
-            stake = st.number_input("Stake ($)", value=float(_rec["stake"]) or 10.0,
+            stake = st.number_input("Stake ($)", value=float(_rec["stake"]) if _rec["stake"] > 0 else 10.0,
                                     step=1.0, min_value=0.5)
             book = st.text_input("Sportsbook", placeholder="DraftKings, FanDuel...")
             is_parlay_bet = st.checkbox("🎰 Is Parlay?", value=False, help="Mark if this is a parlay ticket")
@@ -1443,7 +1449,7 @@ def render_sport_tab(sport: str, use_live: bool):
                 u = _fmt_ml(under) if under else "—"
                 return f"O/U {total}  (O {o} / U {u})"
             def _fmt_pct(v):
-                return f"{int(v)}%" if v is not None and v == v else None
+                return f"{int(v)}%" if v is not None and pd.notna(v) else None
 
             has_team_totals = "away_team_total" in gl.columns and gl["away_team_total"].notna().any()
             has_public = "ml_away_public" in gl.columns and gl["ml_away_public"].notna().any()
@@ -1578,18 +1584,18 @@ def render_sport_tab(sport: str, use_live: bool):
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
                          "Kelly", "Signal",
+                         *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
                          "Move", "Sharp Line",
-                         *(["NB Δ"] if has_nb else []),
                          "Status"]
         else:
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
                          "Kelly", "Signal",
+                         *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
-                         "Move", "Sharp Line",
-                         *(["NB Δ"] if has_nb else [])]
+                         "Move", "Sharp Line"]
 
         display_df.columns = col_names
         for col in ["Book Implied", "Fair Est.", "Edge"]:
@@ -1795,17 +1801,142 @@ def render_sport_tab(sport: str, use_live: bool):
                 st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
 
-        st.markdown("#### 🏆 Top 10 Best Edge Candidates")
-        st.caption("Highest edge plays within -300 to +300 odds — sorted by edge, best value first.")
+        st.markdown("#### 🏆 Top 20 Best Edge Candidates")
+        st.caption("Top 5 per prop market within -300 to +300 odds — sorted by edge, best value first.")
         if report["top10"]:
             top_df = pd.DataFrame(report["top10"])
+            # Ensure required columns exist with safe fallbacks
+            if "market" not in top_df.columns:
+                top_df["market"] = top_df.get("prop_label", top_df.get("prop", "unknown"))
+            if "team" not in top_df.columns:
+                top_df["team"] = ""
+            if "book_implied" not in top_df.columns:
+                top_df["book_implied"] = top_df.get("implied", 0.5)
+            if "edge" not in top_df.columns:
+                top_df["edge"] = 0.0
+            if "fair_est" not in top_df.columns:
+                top_df["fair_est"] = top_df.get("book_implied", 0.5)
             top_df["prop"] = top_df["market"].map(lambda k: market_labels.get(k, k))
-            top_df = top_df[["player", "prop", "line", "team", "over_odds", "book_implied", "edge"]]
-            top_df.columns = ["Player", "Prop", "Line", "Team/Game", "Odds", "Book Implied", "Edge"]
-            top_df["Odds"] = top_df["Odds"].apply(lambda x: f"+{int(x)}" if int(x) > 0 else f"{int(x)}")
-            top_df["Book Implied"] = top_df["Book Implied"].apply(lambda x: f"{x:.1%}")
-            top_df["Edge"] = top_df["Edge"].apply(lambda x: f"{x:.1%}")
-            st.dataframe(top_df, use_container_width=True, hide_index=True)
+            _display_cols = [c for c in ["player", "prop", "line", "team", "over_odds", "book_implied", "edge"] if c in top_df.columns]
+            disp_df = top_df[_display_cols].copy()
+            disp_df.columns = ["Player", "Prop", "Line", "Team/Game", "Odds", "Book Implied", "Edge"][:len(_display_cols)]
+            if "Odds" in disp_df.columns:
+                disp_df["Odds"] = disp_df["Odds"].apply(lambda x: f"+{int(x)}" if int(x) > 0 else f"{int(x)}")
+            if "Book Implied" in disp_df.columns:
+                disp_df["Book Implied"] = disp_df["Book Implied"].apply(lambda x: f"{x:.1%}")
+            if "Edge" in disp_df.columns:
+                disp_df["Edge"] = disp_df["Edge"].apply(lambda x: f"{x:.1%}")
+            st.dataframe(disp_df, use_container_width=True, hide_index=True)
+
+            # ── Manual Parlay Builder ─────────────────────────────────────────
+            st.markdown("#### 🛠️ Manual Parlay Builder")
+            st.caption("Select legs from the Top 20 above to build a custom parlay.")
+
+            _top_rows = report["top10"]
+            _leg_labels = [
+                f"{r.get('player','?')} — {market_labels.get(r.get('market', r.get('prop_label', r.get('prop','?'))), r.get('market', r.get('prop_label', r.get('prop','?'))))} O{r.get('line',0.5)} "
+                f"({'+'if int(r.get('over_odds',0))>0 else ''}{int(r.get('over_odds',0))}) "
+                f"[Edge: {r.get('edge',0):+.1%}]"
+                for r in _top_rows
+            ]
+            _label_to_row = dict(zip(_leg_labels, _top_rows))
+
+            _parlay_key_ms = f"manual_parlay_sel_{sport}"
+            # Filter out any stale defaults that no longer exist in current options
+            _valid_defaults = [l for l in st.session_state.get(_parlay_key_ms, []) if l in _leg_labels]
+            _selected_labels = st.multiselect(
+                "Pick 2–20 legs:",
+                options=_leg_labels,
+                default=_valid_defaults,
+                key=_parlay_key_ms,
+                placeholder="Choose players from the Top 20…",
+                max_selections=20,
+            )
+            _selected_rows = [_label_to_row[l] for l in _selected_labels if l in _label_to_row]
+
+            if len(_selected_rows) >= 2:
+                # ── Compute combined parlay ──
+                from parlay_builder import parlay_payout, parlay_ev
+                from edge_model import gaussian_copula_joint
+
+                _legs_odds  = [int(r["over_odds"]) for r in _selected_rows]
+                _payout     = parlay_payout(_legs_odds, stake)
+                _ev         = parlay_ev(_selected_rows, stake)
+
+                def _r_market(r):
+                    return r.get("market", r.get("prop_label", r.get("prop", "prop")))
+                def _r_player(r):
+                    return r.get("player", "?")
+
+                # Copula joint probability (accounts for correlations)
+                _copula_legs = [{"fair_est": r.get("fair_est", r.get("book_implied", 0.5)),
+                                  "market": _r_market(r),
+                                  "player": _r_player(r)} for r in _selected_rows]
+                _joint_prob  = gaussian_copula_joint(_copula_legs)
+                _naive_prob  = 1.0
+                for r in _selected_rows:
+                    _naive_prob *= r.get("fair_est", r.get("book_implied", 0.5))
+
+                # Display metrics
+                _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
+                _mc1.metric("Legs", len(_selected_rows))
+                _mc2.metric("Combined Odds", _payout.get("american_odds", "—"))
+                _mc3.metric(f"Payout (${stake:.0f})", f"${_payout.get('payout', 0):.2f}")
+                _mc4.metric("Joint Prob (Copula)", f"{_joint_prob:.2%}")
+                _ev_dollars = _ev.get("ev_dollars", 0)
+                _mc5.metric("EV", f"${_ev_dollars:+.2f}", delta_color="normal" if _ev_dollars >= 0 else "inverse")
+
+                # Leg breakdown table
+                _leg_rows = []
+                for r in _selected_rows:
+                    _o = int(r.get("over_odds", 0))
+                    _mkt = _r_market(r)
+                    _leg_rows.append({
+                        "Player":    _r_player(r),
+                        "Prop":      market_labels.get(_mkt, _mkt),
+                        "Line":      r.get("line", 0.5),
+                        "Odds":      f"+{_o}" if _o > 0 else str(_o),
+                        "Fair Prob": f"{r.get('fair_est', r.get('book_implied', 0)):.1%}",
+                        "Edge":      f"{r.get('edge', 0):+.1%}",
+                        "Team/Game": r.get("team", ""),
+                    })
+                st.dataframe(pd.DataFrame(_leg_rows), use_container_width=True, hide_index=True)
+
+                # Corr warning if same-player legs detected
+                _players = [_r_player(r) for r in _selected_rows]
+                if len(_players) != len(set(_players)):
+                    st.warning("⚠️ Same-player legs detected — correlation penalty applied to joint probability.")
+                if _naive_prob > 0 and _joint_prob < _naive_prob * 0.85:
+                    st.info(f"📉 Correlation reduces joint prob from {_naive_prob:.2%} → {_joint_prob:.2%} "
+                            f"({(_joint_prob/_naive_prob - 1)*100:.1f}%)")
+
+                # Log to bet tracker button
+                _combined_american = _payout.get("american_odds", "+100")
+                try:
+                    _combined_int = int(str(_combined_american).replace("+", ""))
+                except (ValueError, TypeError):
+                    _combined_int = 100  # fallback for "N/A" on very low-prob parlays
+                if st.button("📝 Log This Parlay to Tracker", key=f"log_manual_parlay_{sport}"):
+                    from bet_tracker import add_bet
+                    _leg_desc = " + ".join(
+                        f"{_r_player(r)} {market_labels.get(_r_market(r), _r_market(r))} O{r.get('line',0.5)}"
+                        for r in _selected_rows
+                    )
+                    add_bet(
+                        sport=sport,
+                        player="Manual Parlay",
+                        prop=f"{len(_selected_rows)}-Leg: {_leg_desc}",
+                        line=0.0,
+                        odds=_combined_int,
+                        stake=stake,
+                        notes=f"Manual parlay built from Top 20 | EV ${_ev_dollars:+.2f}",
+                        is_parlay=True,
+                    )
+                    st.success("✅ Parlay logged to bet tracker!")
+
+            elif len(_selected_rows) == 1:
+                st.info("Select at least 2 legs to build a parlay.")
+
         else:
             st.info("No value plays found after edge filtering. Try lowering the Min Edge slider.")
 
@@ -2016,7 +2147,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     ctax = sgp.get("correlation_tax", {})
                     r_ij = ctax.get("r_ij", 1.0)
                     tax_pct = ctax.get("correlation_tax_pct", 0.0)
-                    fair_american = ctax.get("independent_american", "—")
+                    fair_american = ctax.get("fair_american", "—")
 
                     st.metric("Payout", f"${pout['payout']:.2f}",
                               delta=f"{pout['american_odds']} odds")

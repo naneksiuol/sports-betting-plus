@@ -71,10 +71,10 @@ MARKET_BUCKETS = {
     "player_points_rebounds":          "bball_combo",
     "player_points_assists":           "bball_combo",
     "player_rebounds_assists":         "bball_combo",
-    # NHL
+    # NHL — only add keys not already covered by NBA/WNBA above
+    # (player_points / player_assists are shared keys; keeping bball_ bucket
+    #  so those markets are already in the dict and won't be duplicated)
     "player_goals":          "nhl_goal",
-    "player_assists":        "nhl_ast",
-    "player_points":         "nhl_pts",
     "player_shots_on_goal":  "nhl_shot",
     "player_saves":          "nhl_save",
     "player_blocked_shots":  "nhl_block",
@@ -150,16 +150,32 @@ def _score_and_rank(df: pd.DataFrame) -> pd.DataFrame:
 # ── Multi-Game Parlay ─────────────────────────────────────────────────────────
 
 def get_top_candidates(df: pd.DataFrame, min_odds: int = -500,
-                       max_odds: int = 2000, n: int = 10) -> pd.DataFrame:
+                       max_odds: int = 2000, n: int = 20,
+                       per_market: int = 5) -> pd.DataFrame:
     """
-    Top N props by edge across the full board.
-    Sorted by edge descending so the display always shows exactly N rows.
-    Odds range is wide by default — the parlay builders use their own tighter window.
+    Top N props by edge — up to `per_market` picks per prop/market type.
+    Ensures diversity: no single market floods the list.
+    Sorted by edge descending. Default: top 20, max 5 per market.
     """
     if df.empty or "edge" not in df.columns:
         return df
     pool = df[(df["over_odds"] >= min_odds) & (df["over_odds"] <= max_odds)].copy()
-    return pool.sort_values("edge", ascending=False).head(n)
+    pool = pool.sort_values("edge", ascending=False)
+
+    # If market column exists, group by it for diversity; otherwise just head(n)
+    if "market" in pool.columns:
+        # Use a row-index approach to avoid pandas dropping the groupby key column
+        _kept_idx = []
+        for _mkt, _grp in pool.groupby("market", sort=False):
+            _kept_idx.extend(_grp.index[:per_market].tolist())
+        selected = (
+            pool.loc[_kept_idx]
+                .sort_values("edge", ascending=False)
+                .head(n)
+        )
+    else:
+        selected = pool.head(n)
+    return selected
 
 
 def parlay_ev(legs: list[dict], stake: float = 10.0) -> dict:
@@ -474,7 +490,7 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
         return {"top10": [], "parlays": {}, "sgps": [], "diverse_sgps": {},
                 "stake": stake, "pos_edge_games": 0, "total_games": 0}
     sgp_source = full_df if (full_df is not None and not full_df.empty) else df
-    top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=10)
+    top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=20, per_market=5)
 
     # Count how many games have at least one positive-edge play
     pos_edge_games = (

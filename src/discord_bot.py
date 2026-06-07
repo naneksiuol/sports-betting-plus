@@ -11,14 +11,30 @@ Setup (60 seconds):
 
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent.parent / ".env")
-except ImportError:
-    pass
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
+
+def _load_env():
+    """Load .env file — tries python-dotenv first, falls back to manual parse."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_ENV_FILE, override=True)
+        return
+    except ImportError:
+        pass
+    # Manual fallback: parse KEY=VALUE lines directly into os.environ
+    if _ENV_FILE.exists():
+        for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                os.environ.setdefault(key.strip(), val.strip())
+
+
+_load_env()
 
 
 def get_webhook_url() -> str:
@@ -57,21 +73,34 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
     if record:
         record_str = f"**Record:** {record.get('wins',0)}W-{record.get('losses',0)}L | **ROI:** {record.get('roi',0):+.1f}%\n\n"
 
+    # Select top 5 per unique prop/market, up to 20 total, sorted by edge descending
+    from collections import defaultdict
+    _by_market = defaultdict(list)
+    for p in sorted(picks, key=lambda x: x.get("edge", 0), reverse=True):
+        _market = p.get("prop_label", p.get("market", "other"))
+        if len(_by_market[_market]) < 5:
+            _by_market[_market].append(p)
+    # Flatten and re-sort by edge, cap at 20
+    _top20 = sorted(
+        [p for group in _by_market.values() for p in group],
+        key=lambda x: x.get("edge", 0), reverse=True
+    )[:20]
+
     picks_lines = []
-    for i, p in enumerate(picks[:10], 1):
+    for i, p in enumerate(_top20, 1):
         odds = int(p.get("over_odds", 0))
         odds_str = f"+{odds}" if odds > 0 else str(odds)
         edge = p.get("edge", 0)
         label = p.get("prop_label", p.get("market", ""))
         picks_lines.append(
-            f"`{i}.` **{p['player']}** — {label} O{p.get('line',0.5)} | {odds_str} | Edge: {edge:+.1%}"
+            f"`{i:02d}.` **{p['player']}** — {label} O{p.get('line',0.5)} | {odds_str} | Edge: {edge:+.1%}"
         )
 
     embeds.append({
         "title": f"🎯 Sports Betting Plus — {sport} Daily Slip",
-        "description": f"📅 {today}\n\n{record_str}**🏆 Top 10 Plays (Best Odds First)**\n\n" + "\n".join(picks_lines),
+        "description": f"📅 {today}\n\n{record_str}**🏆 Top 20 Best Edge Candidates (Top 5 per Prop)**\n\n" + "\n".join(picks_lines),
         "color": 0x00FF88,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     # ── Embeds 2+: One per parlay ──

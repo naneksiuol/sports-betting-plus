@@ -93,8 +93,10 @@ def update_result(bet_id: str, result: str, closing_odds: int = None):
             stake = bet["stake"]
 
             if result == "win":
+                # Guard division by zero if odds field is corrupt/missing
+                safe_odds = odds if odds and odds != 0 else -110
                 bet["profit"] = round(
-                    stake * (100 / abs(odds)) if odds < 0 else stake * (odds / 100), 2)
+                    stake * (100 / abs(safe_odds)) if safe_odds < 0 else stake * (safe_odds / 100), 2)
             elif result == "loss":
                 bet["profit"] = -round(stake, 2)
             elif result == "push":
@@ -130,7 +132,8 @@ def get_clv_avg(n_recent: int = 30) -> float | None:
     # Use best available CLV — true closing first, then opening as proxy
     clv_vals = []
     for b in reversed(settled):  # most recent first
-        clv = b.get("clv") or b.get("opening_clv")
+        # Explicit None check — avoids dropping legitimate 0.0 CLV values
+        clv = b.get("clv") if b.get("clv") is not None else b.get("opening_clv")
         if clv is not None:
             clv_vals.append(float(clv))
         if len(clv_vals) >= n_recent:
@@ -153,9 +156,13 @@ def get_stats() -> dict:
     win_rate = (len(wins) / len(settled) * 100) if settled else 0
 
     # CLV — prefer closing CLV, fall back to opening CLV
+    # Explicit None check to avoid dropping legitimate 0.0 CLV values (falsy `or` bug)
     clv_bets = [b for b in settled
                 if b.get("clv") is not None or b.get("opening_clv") is not None]
-    clv_values = [b.get("clv") or b.get("opening_clv") for b in clv_bets]
+    clv_values = [
+        b.get("clv") if b.get("clv") is not None else b.get("opening_clv")
+        for b in clv_bets
+    ]
     avg_clv = sum(clv_values) / len(clv_values) if clv_values else None
 
     # Opening CLV for pending bets (early signal)

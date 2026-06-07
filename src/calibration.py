@@ -221,6 +221,10 @@ def train_calibrator(force: bool = False) -> dict:
     }
 
     CAL_FILE.write_bytes(pickle.dumps(payload))
+    # Bust cache so next call re-reads the fresh file
+    global _calibrator_cache, _calibrator_mtime
+    _calibrator_cache = None
+    _calibrator_mtime = 0.0
 
     return {
         "status":      "ok",
@@ -231,11 +235,21 @@ def train_calibrator(force: bool = False) -> dict:
     }
 
 
+# Module-level cache — avoids re-reading calibrator.pkl on every prediction call
+_calibrator_cache: dict | None = None
+_calibrator_mtime: float = 0.0
+
+
 def _load_calibrator() -> dict | None:
+    global _calibrator_cache, _calibrator_mtime
     if not CAL_FILE.exists():
         return None
     try:
-        return pickle.loads(CAL_FILE.read_bytes())
+        mtime = CAL_FILE.stat().st_mtime
+        if _calibrator_cache is None or mtime != _calibrator_mtime:
+            _calibrator_cache = pickle.loads(CAL_FILE.read_bytes())
+            _calibrator_mtime = mtime
+        return _calibrator_cache
     except Exception:
         return None
 

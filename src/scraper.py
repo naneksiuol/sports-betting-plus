@@ -298,6 +298,8 @@ def scrape_props(sport: str) -> pd.DataFrame:
                     if not isinstance(book_lines, list):
                         continue
                     for line in book_lines:
+                        if not isinstance(line, dict):
+                            continue
                         odds = line.get("odds")
                         val = line.get("value")
                         side = line.get("side", "").lower()
@@ -372,7 +374,7 @@ def scrape_props(sport: str) -> pd.DataFrame:
                         if fair_est_shin_ref is None:
                             fair_est_shin_ref = fair_est
                 fair_est = min(fair_est, 0.99)
-                fair_est_shin_ref = min(fair_est_shin_ref or fair_est, 0.99)
+                fair_est_shin_ref = min(fair_est_shin_ref if fair_est_shin_ref is not None else fair_est, 0.99)
 
                 # NegBin correction is a supplementary signal — useful when we have
                 # an independent count model.  Applied to a devigged line alone it
