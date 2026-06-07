@@ -2359,88 +2359,119 @@ def render_sport_tab(sport: str, use_live: bool):
                 + (" 2-leg shown below." if pos_games == 2 else "")
             )
 
-        # ── Multi-game parlays (2/3/4/5-leg) when data allows ──
+        # ── Multi-game parlays (2/3/4/5-leg) — stacked cards, mobile-friendly ──
         show_legs = [2, 3, 4, 5] if "2_leg" in report["parlays"] else [3, 4, 5]
-        p_cols = st.columns(len(show_legs))
-        for i, n in enumerate(show_legs):
+        for n in show_legs:
             pkey = f"{n}_leg"
-            with p_cols[i]:
-                st.markdown(f"""<div style="font-size:14px;font-weight:700;color:#a78bfa;
-                    text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
-                    {n}-Leg Parlay</div>""", unsafe_allow_html=True)
-                if pkey in report["parlays"]:
-                    p = report["parlays"][pkey]
-                    pout = p["payout"]
-                    ev  = p.get("ev", {})
-                    ev_pct  = ev.get("ev_pct", 0)
-                    ev_sign = "+" if ev_pct >= 0 else ""
-                    ev_col  = "#34d399" if ev_pct > 0 else "#ff6060"
-                    win_prob = ev.get("win_prob", 0)
-                    # Payout hero card — stacked layout, works in narrow columns
-                    st.markdown(f"""
-<div style="background:linear-gradient(160deg,#141420 0%,#1a1a2e 100%);
-            border:1px solid #3a3a5a;border-radius:14px;padding:16px;
-            margin-bottom:12px;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-    <div>
-      <p style="margin:0;color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Combined Odds</p>
-      <p style="margin:2px 0 0;color:#a78bfa;font-size:28px;font-weight:900;line-height:1;">{pout['american_odds']}</p>
+            if pkey not in report["parlays"]:
+                needed = n - pos_games
+                st.markdown(
+                    f'<p style="color:#64748b;font-size:13px;margin:4px 0 12px;">'
+                    f'🔒 {n}-Leg Parlay — need {needed} more game{"s" if needed!=1 else ""} with value plays.</p>',
+                    unsafe_allow_html=True)
+                continue
+
+            p    = report["parlays"][pkey]
+            pout = p["payout"]
+            ev       = p.get("ev", {})
+            ev_pct   = ev.get("ev_pct", 0)
+            ev_sign  = "+" if ev_pct >= 0 else ""
+            ev_col   = "#34d399" if ev_pct > 0 else "#ff6060"
+            win_prob = ev.get("win_prob", 0)
+            amer     = pout["american_odds"]
+            amer_fmt = f"+{amer}" if isinstance(amer, (int, float)) and amer > 0 else str(amer)
+
+            # Build legs HTML
+            legs_html = ""
+            for j, leg in enumerate(p["legs"], 1):
+                prop     = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                edge_val = leg.get("edge", 0)
+                edge_col = "#34d399" if edge_val > 0 else "#ff6060"
+                try:
+                    odds_i   = int(leg["over_odds"])
+                    odds_fmt = f"+{odds_i}" if odds_i > 0 else str(odds_i)
+                except Exception:
+                    odds_fmt = str(leg.get("over_odds", ""))
+                conf = " ✅" if leg.get("edge_confirmed") else ""
+                legs_html += f"""
+<div style="display:flex;justify-content:space-between;align-items:flex-start;
+            padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+  <div style="flex:1;min-width:0;">
+    <div style="color:#e2e8f0;font-size:14px;font-weight:600;
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      {j}. {leg['player']}{conf}
     </div>
-    <div style="text-align:right;">
-      <p style="margin:0;color:{ev_col};font-size:18px;font-weight:800;line-height:1;">{ev_sign}{ev_pct:.1f}%</p>
-      <p style="margin:2px 0 0;color:#666;font-size:10px;">Win {win_prob:.1%}</p>
+    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">
+      {prop} O{leg.get('line','')}
+      <span style="color:#a78bfa;font-weight:700;"> {odds_fmt}</span>
+      &nbsp;·&nbsp;<span style="color:#64748b;">{leg.get('team','')}</span>
     </div>
   </div>
-  <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);
-              border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
-    <span style="color:#888;font-size:11px;">Payout on ${pout['stake']:.0f}</span>
-    <span style="color:#34d399;font-size:20px;font-weight:800;">${pout['payout']:.2f}</span>
-  </div>
-</div>""", unsafe_allow_html=True)
-                    _legs_html = ""
-                    for j, leg in enumerate(p["legs"], 1):
-                        prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
-                        edge_val = leg.get('edge', 0)
-                        edge_pct = f"+{edge_val:.1%}"
-                        edge_col = "#34d399" if edge_val > 0 else "#ff6060"
-                        odds_fmt = f"+{int(leg['over_odds'])}" if leg['over_odds'] > 0 else str(int(leg['over_odds']))
-                        conf_badge = '<span style="color:#34d399;font-size:11px;margin-left:4px;">✅</span>' if leg.get("edge_confirmed") else ""
-                        _legs_html += f"""
-<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-  <div style="display:flex;justify-content:space-between;align-items:center;">
-    <span style="color:#e2e8f0;font-size:13px;font-weight:600;">{j}. {leg['player']}{conf_badge}</span>
-    <span style="color:{edge_col};font-size:12px;font-weight:700;">{edge_pct}</span>
-  </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
-    <span style="color:#94a3b8;font-size:12px;">{prop} O{leg.get('line','')} <span style="color:#a78bfa;">({odds_fmt})</span></span>
-    <span style="color:#64748b;font-size:11px;">{leg['team']}</span>
+  <div style="margin-left:12px;flex-shrink:0;">
+    <span style="color:{edge_col};font-size:13px;font-weight:700;">{ev_sign if edge_val>=0 else ''}{edge_val:.1%}</span>
   </div>
 </div>"""
-                    st.markdown(f'<div style="margin-bottom:10px;">{_legs_html}</div>', unsafe_allow_html=True)
-                    if st.button(f"📝 Log {n}-Leg Parlay to Tracker",
-                                 key=f"log_parlay_{sport}_{n}", use_container_width=True):
-                        from bet_tracker import add_bet
-                        for leg in p["legs"]:
-                            prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
-                            mkt = leg.get("market", "")
-                            sk = (leg["player"].lower(), mkt, float(leg.get("line", 0.5)))
-                            sl = sharp_map.get(sk, {})
-                            add_bet(
-                                sport=sport,
-                                player=leg["player"],
-                                prop=f"{prop} O{leg.get('line','')} [{n}-leg parlay]",
-                                line=leg.get("line", 0.5),
-                                odds=int(leg["over_odds"]),
-                                stake=round(stake / n, 2),
-                                book="",
-                                notes=f"Auto-logged from {n}-leg parlay | {pout['american_odds']} combined",
-                                sharp_odds=sl.get("consensus_odds"),
-                                fair_est=leg.get("fair_est"),
-                            )
-                        st.success(f"✅ {n} legs logged to Tracker!")
-                elif n > 2:
-                    needed = n - pos_games
-                    st.caption(f"Need {needed} more game{'s' if needed != 1 else ''} with value plays.")
+
+            st.markdown(f"""
+<div style="background:linear-gradient(160deg,#12121f 0%,#1a1a2e 100%);
+            border:1px solid #2e2e4a;border-radius:16px;padding:0;
+            margin-bottom:16px;overflow:hidden;">
+
+  <!-- Header bar -->
+  <div style="background:linear-gradient(90deg,#4f46e5 0%,#7c3aed 100%);
+              padding:10px 16px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="color:#fff;font-size:13px;font-weight:800;letter-spacing:0.5px;">
+      {n}-LEG PARLAY
+    </span>
+    <span style="color:rgba(255,255,255,0.75);font-size:12px;">
+      Win {win_prob:.1%}
+    </span>
+  </div>
+
+  <!-- Stats row -->
+  <div style="display:flex;gap:0;border-bottom:1px solid #2e2e4a;">
+    <div style="flex:1;padding:14px 16px;border-right:1px solid #2e2e4a;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;">Combined Odds</div>
+      <div style="color:#a78bfa;font-size:26px;font-weight:900;line-height:1;">{amer_fmt}</div>
+    </div>
+    <div style="flex:1;padding:14px 16px;border-right:1px solid #2e2e4a;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;">Payout on ${pout['stake']:.0f}</div>
+      <div style="color:#34d399;font-size:26px;font-weight:900;line-height:1;">${pout['payout']:.2f}</div>
+    </div>
+    <div style="flex:1;padding:14px 16px;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;">EV</div>
+      <div style="color:{ev_col};font-size:26px;font-weight:900;line-height:1;">{ev_sign}{ev_pct:.1f}%</div>
+    </div>
+  </div>
+
+  <!-- Legs -->
+  <div style="padding:4px 16px 8px;">
+    {legs_html}
+  </div>
+
+</div>""", unsafe_allow_html=True)
+
+            if st.button(f"Log {n}-Leg Parlay to Tracker",
+                         key=f"log_parlay_{sport}_{n}", use_container_width=True):
+                from bet_tracker import add_bet
+                for leg in p["legs"]:
+                    prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                    mkt  = leg.get("market", "")
+                    sk   = (leg["player"].lower(), mkt, float(leg.get("line", 0.5)))
+                    sl   = sharp_map.get(sk, {})
+                    add_bet(
+                        sport=sport,
+                        player=leg["player"],
+                        prop=f"{prop} O{leg.get('line','')} [{n}-leg parlay]",
+                        line=leg.get("line", 0.5),
+                        odds=int(leg["over_odds"]),
+                        stake=round(stake / n, 2),
+                        book="",
+                        notes=f"Auto-logged from {n}-leg parlay | {amer_fmt} combined",
+                        sharp_odds=sl.get("consensus_odds"),
+                        fair_est=leg.get("fair_est"),
+                    )
+                st.success(f"{n} legs logged to Tracker!")
 
         # ── Log All Parlays + SGPs ──
         _has_parlays = bool(report["parlays"])
