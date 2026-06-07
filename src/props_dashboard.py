@@ -1795,8 +1795,8 @@ def render_sport_tab(sport: str, use_live: bool):
                 st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
 
-        st.markdown("#### 🏆 Top 10 Best Edge Candidates")
-        st.caption("Highest edge plays within -300 to +300 odds — sorted by edge, best value first.")
+        st.markdown("#### 🏆 Top 20 Best Edge Candidates")
+        st.caption("Top 5 per prop market within -300 to +300 odds — sorted by edge, best value first.")
         if report["top10"]:
             top_df = pd.DataFrame(report["top10"])
             top_df["prop"] = top_df["market"].map(lambda k: market_labels.get(k, k))

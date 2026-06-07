@@ -150,16 +150,26 @@ def _score_and_rank(df: pd.DataFrame) -> pd.DataFrame:
 # ── Multi-Game Parlay ─────────────────────────────────────────────────────────
 
 def get_top_candidates(df: pd.DataFrame, min_odds: int = -500,
-                       max_odds: int = 2000, n: int = 10) -> pd.DataFrame:
+                       max_odds: int = 2000, n: int = 20,
+                       per_market: int = 5) -> pd.DataFrame:
     """
-    Top N props by edge across the full board.
-    Sorted by edge descending so the display always shows exactly N rows.
-    Odds range is wide by default — the parlay builders use their own tighter window.
+    Top N props by edge — up to `per_market` picks per prop/market type.
+    Ensures diversity: no single market floods the list.
+    Sorted by edge descending. Default: top 20, max 5 per market.
     """
     if df.empty or "edge" not in df.columns:
         return df
     pool = df[(df["over_odds"] >= min_odds) & (df["over_odds"] <= max_odds)].copy()
-    return pool.sort_values("edge", ascending=False).head(n)
+    pool = pool.sort_values("edge", ascending=False)
+
+    # Take top per_market rows per market, then re-sort and cap at n
+    selected = (
+        pool.groupby("market", group_keys=False)
+            .apply(lambda g: g.head(per_market))
+            .sort_values("edge", ascending=False)
+            .head(n)
+    )
+    return selected
 
 
 def parlay_ev(legs: list[dict], stake: float = 10.0) -> dict:
@@ -474,7 +484,7 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
         return {"top10": [], "parlays": {}, "sgps": [], "diverse_sgps": {},
                 "stake": stake, "pos_edge_games": 0, "total_games": 0}
     sgp_source = full_df if (full_df is not None and not full_df.empty) else df
-    top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=10)
+    top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=20, per_market=5)
 
     # Count how many games have at least one positive-edge play
     pos_edge_games = (
