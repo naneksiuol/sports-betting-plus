@@ -517,7 +517,7 @@ def render_bet_tracker():
             _rec = _rec_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
             _clv_note = f" | CLV avg: {_clv_avg:+.1f}% (last 30)" if _clv_avg is not None else " | CLV: no history yet"
             st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% · {_rec['kelly_multiplier']:.0%} Kelly) | EV: ${_rec['ev_on_stake']:+.2f}{_clv_note}")
-            stake = st.number_input("Stake ($)", value=float(_rec["stake"]) or 10.0,
+            stake = st.number_input("Stake ($)", value=float(_rec["stake"]) if _rec["stake"] > 0 else 10.0,
                                     step=1.0, min_value=0.5)
             book = st.text_input("Sportsbook", placeholder="DraftKings, FanDuel...")
             is_parlay_bet = st.checkbox("🎰 Is Parlay?", value=False, help="Mark if this is a parlay ticket")
@@ -1442,7 +1442,7 @@ def render_sport_tab(sport: str, use_live: bool):
                 u = _fmt_ml(under) if under else "—"
                 return f"O/U {total}  (O {o} / U {u})"
             def _fmt_pct(v):
-                return f"{int(v)}%" if v is not None and v == v else None
+                return f"{int(v)}%" if v is not None and pd.notna(v) else None
 
             has_team_totals = "away_team_total" in gl.columns and gl["away_team_total"].notna().any()
             has_public = "ml_away_public" in gl.columns and gl["ml_away_public"].notna().any()
@@ -1578,18 +1578,18 @@ def render_sport_tab(sport: str, use_live: bool):
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
                          "Kelly", "Signal",
+                         *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
                          "Move", "Sharp Line",
-                         *(["NB Δ"] if has_nb else []),
                          "Status"]
         else:
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
                          "Kelly", "Signal",
+                         *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
-                         "Move", "Sharp Line",
-                         *(["NB Δ"] if has_nb else [])]
+                         "Move", "Sharp Line"]
 
         display_df.columns = col_names
         for col in ["Book Implied", "Fair Est.", "Edge"]:
@@ -1906,7 +1906,10 @@ def render_sport_tab(sport: str, use_live: bool):
 
                 # Log to bet tracker button
                 _combined_american = _payout.get("american_odds", "+100")
-                _combined_int = int(_combined_american.replace("+", "")) if "+" in str(_combined_american) else int(_combined_american)
+                try:
+                    _combined_int = int(str(_combined_american).replace("+", ""))
+                except (ValueError, TypeError):
+                    _combined_int = 100  # fallback for "N/A" on very low-prob parlays
                 if st.button("📝 Log This Parlay to Tracker", key=f"log_manual_parlay_{sport}"):
                     from bet_tracker import add_bet
                     _leg_desc = " + ".join(
@@ -2138,7 +2141,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     ctax = sgp.get("correlation_tax", {})
                     r_ij = ctax.get("r_ij", 1.0)
                     tax_pct = ctax.get("correlation_tax_pct", 0.0)
-                    fair_american = ctax.get("independent_american", "—")
+                    fair_american = ctax.get("fair_american", "—")
 
                     st.metric("Payout", f"${pout['payout']:.2f}",
                               delta=f"{pout['american_odds']} odds")

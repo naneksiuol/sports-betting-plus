@@ -153,18 +153,25 @@ def detect_steam_moves(snaps: dict | None = None, min_move: float = STEAM_CENTS_
             if odds is None:
                 continue
 
+            try:
+                f_opening = float(opening)
+                f_odds    = float(odds)
+                f_edge    = float(edge) if edge is not None else 0.0
+            except (TypeError, ValueError):
+                continue
+
             if key not in key_data:
                 key_data[key] = {
-                    "open_odds":    float(opening),
-                    "edge_open":    float(edge),
-                    "curr_odds":    float(odds),
-                    "edge_current": float(edge),
+                    "open_odds":    f_opening,
+                    "edge_open":    f_edge,
+                    "curr_odds":    f_odds,
+                    "edge_current": f_edge,
                     "last_day":     day,
                 }
             else:
                 # Update current to latest
-                key_data[key]["curr_odds"]    = float(odds)
-                key_data[key]["edge_current"] = float(edge)
+                key_data[key]["curr_odds"]    = f_odds
+                key_data[key]["edge_current"] = f_edge
                 key_data[key]["last_day"]     = day
 
     flags = []

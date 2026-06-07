@@ -221,7 +221,7 @@ class PropModel:
         if self._model is not None:
             bundle = {"model": self._model, "stats": self._stats}
             MODEL_FILE.write_bytes(pickle.dumps(bundle))
-        STATS_FILE.write_text(json.dumps(self._stats, indent=2))
+        STATS_FILE.write_text(json.dumps(self._stats, indent=2), encoding="utf-8")
 
     # ── Training ─────────────────────────────────────────────────────────────
 
@@ -238,9 +238,9 @@ class PropModel:
             return {"status": "error", "msg": str(e)}
 
         if bets is None:
-            bets = json.loads(BETS_FILE.read_text()) if BETS_FILE.exists() else []
+            bets = json.loads(BETS_FILE.read_text(encoding="utf-8")) if BETS_FILE.exists() else []
         if snaps is None:
-            snaps = json.loads(SNAP_FILE.read_text()) if SNAP_FILE.exists() else {}
+            snaps = json.loads(SNAP_FILE.read_text(encoding="utf-8")) if SNAP_FILE.exists() else {}
 
         snap_idx = _build_snap_index(snaps)
 
@@ -298,7 +298,8 @@ class PropModel:
         cv_auc = None
         if n >= 50:
             try:
-                cv = StratifiedKFold(n_splits=min(5, n // 10), shuffle=True, random_state=42)
+                # max(2, ...) ensures n_splits is never 1 (StratifiedKFold requires >= 2)
+                cv = StratifiedKFold(n_splits=max(2, min(5, n // 10)), shuffle=True, random_state=42)
                 cv_scores = cross_val_score(
                     lgb.LGBMClassifier(**params), X, y,
                     cv=cv, scoring="roc_auc",

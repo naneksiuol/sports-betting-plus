@@ -271,12 +271,21 @@ def train_models(force: bool = False) -> dict:
 
 # ── Prediction ────────────────────────────────────────────────────────────────
 
+# Module-level model cache: {sport: (mtime, model_dict)} — avoids per-call pickle reads
+_model_cache: dict[str, tuple[float, dict]] = {}
+
+
 def _load_model(sport: str) -> dict | None:
     path = MODEL_DIR / f"lgbm_{sport.lower()}.pkl"
     if not path.exists():
         return None
     try:
-        return pickle.loads(path.read_bytes())
+        mtime = path.stat().st_mtime
+        cached = _model_cache.get(sport)
+        if cached is None or cached[0] != mtime:
+            data = pickle.loads(path.read_bytes())
+            _model_cache[sport] = (mtime, data)
+        return _model_cache[sport][1]
     except Exception:
         return None
 

@@ -11,7 +11,7 @@ Setup (60 seconds):
 
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -100,7 +100,7 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
         "title": f"🎯 Sports Betting Plus — {sport} Daily Slip",
         "description": f"📅 {today}\n\n{record_str}**🏆 Top 20 Best Edge Candidates (Top 5 per Prop)**\n\n" + "\n".join(picks_lines),
         "color": 0x00FF88,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     # ── Embeds 2+: One per parlay ──

@@ -71,10 +71,10 @@ MARKET_BUCKETS = {
     "player_points_rebounds":          "bball_combo",
     "player_points_assists":           "bball_combo",
     "player_rebounds_assists":         "bball_combo",
-    # NHL
+    # NHL — only add keys not already covered by NBA/WNBA above
+    # (player_points / player_assists are shared keys; keeping bball_ bucket
+    #  so those markets are already in the dict and won't be duplicated)
     "player_goals":          "nhl_goal",
-    "player_assists":        "nhl_ast",
-    "player_points":         "nhl_pts",
     "player_shots_on_goal":  "nhl_shot",
     "player_saves":          "nhl_save",
     "player_blocked_shots":  "nhl_block",
