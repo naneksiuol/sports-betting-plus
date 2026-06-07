@@ -1836,12 +1836,15 @@ def render_sport_tab(sport: str, use_live: bool):
             _label_to_row = dict(zip(_leg_labels, _top_rows))
 
             _parlay_key_ms = f"manual_parlay_sel_{sport}"
+            # Filter out any stale defaults that no longer exist in current options
+            _valid_defaults = [l for l in st.session_state.get(_parlay_key_ms, []) if l in _leg_labels]
             _selected_labels = st.multiselect(
-                "Pick 2–8 legs:",
+                "Pick 2–20 legs:",
                 options=_leg_labels,
-                default=st.session_state.get(_parlay_key_ms, []),
+                default=_valid_defaults,
                 key=_parlay_key_ms,
                 placeholder="Choose players from the Top 20…",
+                max_selections=20,
             )
             _selected_rows = [_label_to_row[l] for l in _selected_labels if l in _label_to_row]
 
