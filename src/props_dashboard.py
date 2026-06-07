@@ -2422,7 +2422,7 @@ def _render_ml_tab():
                     return "color: #aaa"
 
                 st.dataframe(
-                    _df_steam.style.applymap(_color_strength, subset=["Strength"]),
+                    _df_steam.style.map(_color_strength, subset=["Strength"]),
                     use_container_width=True, height=420,
                 )
                 st.caption(f"Showing {min(200, len(all_flags))} of {len(all_flags)} flags. "
