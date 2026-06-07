@@ -1828,9 +1828,9 @@ def render_sport_tab(sport: str, use_live: bool):
 
             _top_rows = report["top10"]
             _leg_labels = [
-                f"{r['player']} — {market_labels.get(r['market'], r['market'])} O{r['line']} "
-                f"({'+'if int(r['over_odds'])>0 else ''}{int(r['over_odds'])}) "
-                f"[Edge: {r['edge']:+.1%}]"
+                f"{r.get('player','?')} — {market_labels.get(r.get('market', r.get('prop_label', r.get('prop','?'))), r.get('market', r.get('prop_label', r.get('prop','?'))))} O{r.get('line',0.5)} "
+                f"({'+'if int(r.get('over_odds',0))>0 else ''}{int(r.get('over_odds',0))}) "
+                f"[Edge: {r.get('edge',0):+.1%}]"
                 for r in _top_rows
             ]
             _label_to_row = dict(zip(_leg_labels, _top_rows))
@@ -1854,10 +1854,15 @@ def render_sport_tab(sport: str, use_live: bool):
                 _payout     = parlay_payout(_legs_odds, stake)
                 _ev         = parlay_ev(_selected_rows, stake)
 
+                def _r_market(r):
+                    return r.get("market", r.get("prop_label", r.get("prop", "prop")))
+                def _r_player(r):
+                    return r.get("player", "?")
+
                 # Copula joint probability (accounts for correlations)
                 _copula_legs = [{"fair_est": r.get("fair_est", r.get("book_implied", 0.5)),
-                                  "market": r["market"],
-                                  "player": r["player"]} for r in _selected_rows]
+                                  "market": _r_market(r),
+                                  "player": _r_player(r)} for r in _selected_rows]
                 _joint_prob  = gaussian_copula_joint(_copula_legs)
                 _naive_prob  = 1.0
                 for r in _selected_rows:
@@ -1875,23 +1880,24 @@ def render_sport_tab(sport: str, use_live: bool):
                 # Leg breakdown table
                 _leg_rows = []
                 for r in _selected_rows:
-                    _o = int(r["over_odds"])
+                    _o = int(r.get("over_odds", 0))
+                    _mkt = _r_market(r)
                     _leg_rows.append({
-                        "Player":       r["player"],
-                        "Prop":         market_labels.get(r["market"], r["market"]),
-                        "Line":         r["line"],
-                        "Odds":         f"+{_o}" if _o > 0 else str(_o),
-                        "Fair Prob":    f"{r.get('fair_est', r.get('book_implied', 0)):.1%}",
-                        "Edge":         f"{r.get('edge', 0):+.1%}",
-                        "Team/Game":    r.get("team", ""),
+                        "Player":    _r_player(r),
+                        "Prop":      market_labels.get(_mkt, _mkt),
+                        "Line":      r.get("line", 0.5),
+                        "Odds":      f"+{_o}" if _o > 0 else str(_o),
+                        "Fair Prob": f"{r.get('fair_est', r.get('book_implied', 0)):.1%}",
+                        "Edge":      f"{r.get('edge', 0):+.1%}",
+                        "Team/Game": r.get("team", ""),
                     })
                 st.dataframe(pd.DataFrame(_leg_rows), use_container_width=True, hide_index=True)
 
                 # Corr warning if same-player legs detected
-                _players = [r["player"] for r in _selected_rows]
+                _players = [_r_player(r) for r in _selected_rows]
                 if len(_players) != len(set(_players)):
                     st.warning("⚠️ Same-player legs detected — correlation penalty applied to joint probability.")
-                if _joint_prob < _naive_prob * 0.85:
+                if _naive_prob > 0 and _joint_prob < _naive_prob * 0.85:
                     st.info(f"📉 Correlation reduces joint prob from {_naive_prob:.2%} → {_joint_prob:.2%} "
                             f"({(_joint_prob/_naive_prob - 1)*100:.1f}%)")
 
@@ -1901,7 +1907,7 @@ def render_sport_tab(sport: str, use_live: bool):
                 if st.button("📝 Log This Parlay to Tracker", key=f"log_manual_parlay_{sport}"):
                     from bet_tracker import add_bet
                     _leg_desc = " + ".join(
-                        f"{r['player']} {market_labels.get(r['market'], r['market'])} O{r['line']}"
+                        f"{_r_player(r)} {market_labels.get(_r_market(r), _r_market(r))} O{r.get('line',0.5)}"
                         for r in _selected_rows
                     )
                     add_bet(
