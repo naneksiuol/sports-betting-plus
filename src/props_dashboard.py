@@ -1782,11 +1782,17 @@ def render_sport_tab(sport: str, use_live: bool):
                 return "empty"
 
         _parlay_key = f"parlay_report_{sport}_{_df_hash(filtered)}_{_df_hash(sgp_pool)}_{stake}"
-        if _parlay_key not in st.session_state:
+        # Expire cache after 5 min so stale parlays don't linger all day
+        _parlay_ts_key = _parlay_key + "_ts"
+        import time as _time
+        _now = _time.time()
+        if (_parlay_key not in st.session_state or
+                _now - st.session_state.get(_parlay_ts_key, 0) > 300):
             with st.spinner("⚡ Building parlays & SGPs…"):
                 st.session_state[_parlay_key] = build_parlay_report(
                     filtered, stake=stake, full_df=sgp_pool
                 )
+                st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
 
         st.markdown("#### 🏆 Top 10 Best Edge Candidates")
@@ -2198,6 +2204,261 @@ def render_sport_tab(sport: str, use_live: bool):
                         st.error(f"AI error: {e}")
 
 
+# ── ML Models Tab ─────────────────────────────────────────────────────────────
+def _render_ml_tab():
+    import sys as _sys
+    _sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+
+    st.markdown("## 🤖 ML Predictive Models")
+    st.markdown(
+        "LightGBM prop prediction, Platt-scaling calibration, and steam/RLM detection — "
+        "all trained on your own bet history and odds snapshots."
+    )
+
+    # ── Tabs within ML tab ──
+    cal_tab, lgbm_tab, steam_tab = st.tabs(
+        ["🎯 Calibration Engine", "📊 LightGBM Models", "⚡ Steam & RLM Detector"]
+    )
+
+    # ── Calibration ──────────────────────────────────────────────────────────
+    with cal_tab:
+        st.markdown("### 🎯 Edge Score Calibration")
+        st.markdown(
+            "Platt scaling maps raw model signals → calibrated win probabilities "
+            "so Kelly sizing is mathematically correct. "
+            "**Brier score ≤ 0.22 = good. Coin-flip baseline = 0.25.**"
+        )
+        try:
+            from calibration import calibration_status, train_calibrator, brier_interpretation
+
+            status = calibration_status()
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Graded Bets", status["n_graded"])
+            c2.metric("Win Rate", f"{status['win_rate']}%" if status["win_rate"] else "—")
+            c3.metric("Brier Score", status["brier_score"] if status["brier_score"] else "—",
+                      help="Lower = better calibrated. Coin-flip = 0.25")
+            c4.metric("Method", status["method"].title() if status["method"] else "—")
+
+            if status["brier_score"]:
+                st.info(brier_interpretation(status["brier_score"]))
+
+            if status["status"] == "untrained":
+                st.warning(f"⚠️ Calibrator not trained yet. Need {status['min_platt']} graded bets (have {status['n_graded']}).")
+
+            if status["trained_at"]:
+                st.caption(f"Last trained: {status['trained_at'][:19]}")
+
+            # Reliability diagram
+            rel = status.get("reliability", {})
+            if rel.get("mean_pred") and rel.get("frac_pos"):
+                import plotly.graph_objects as _go
+                fig = _go.Figure()
+                fig.add_trace(_go.Scatter(
+                    x=rel["mean_pred"], y=rel["frac_pos"],
+                    mode="lines+markers", name="Calibration curve",
+                    line=dict(color="#00d4ff", width=2),
+                    marker=dict(size=8),
+                ))
+                fig.add_trace(_go.Scatter(
+                    x=[0, 1], y=[0, 1],
+                    mode="lines", name="Perfect calibration",
+                    line=dict(color="#555", dash="dash"),
+                ))
+                fig.update_layout(
+                    title="Reliability Diagram (closer to diagonal = better)",
+                    xaxis_title="Mean Predicted Probability",
+                    yaxis_title="Fraction of Positives (actual win rate)",
+                    height=350,
+                    paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+                    font=dict(color="#eee"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            if st.button("🔄 Retrain Calibrator", key="retrain_cal"):
+                with st.spinner("Training calibrator on historical bets…"):
+                    result = train_calibrator(force=True)
+                if result["status"] == "ok":
+                    st.success(f"✅ {result['msg']}")
+                    st.rerun()
+                else:
+                    st.warning(result.get("msg", "Training failed"))
+
+        except Exception as _e:
+            st.error(f"Calibration module error: {_e}")
+
+    # ── LightGBM ─────────────────────────────────────────────────────────────
+    with lgbm_tab:
+        st.markdown("### 📊 LightGBM Per-Sport Models")
+        st.markdown(
+            "Gradient boosting models trained on your graded bet history. "
+            "Once trained, these replace manual edge scores with data-driven predictions. "
+            "**AUC > 0.55 = beating random. AUC > 0.65 = strong.**"
+        )
+        try:
+            from ml_model import model_status, train_models
+
+            statuses = model_status()
+            cols = st.columns(len(statuses))
+            for col, (sport, info) in zip(cols, statuses.items()):
+                with col:
+                    icon = {"MLB": "⚾", "NBA": "🏀", "WNBA": "🏀", "NHL": "🏒"}.get(sport, "🎯")
+                    st.markdown(f"**{icon} {sport}**")
+                    if info["status"] == "trained":
+                        auc_val = info.get("cv_auc")
+                        auc_str = f"{auc_val:.4f}" if auc_val else "N/A"
+                        color   = "#00ff88" if auc_val and auc_val >= 0.65 else (
+                                  "#f9c74f" if auc_val and auc_val >= 0.55 else "#ff6060")
+                        st.markdown(
+                            f"<span style='color:{color};font-weight:bold'>✅ Trained</span>",
+                            unsafe_allow_html=True,
+                        )
+                        st.metric("CV AUC", auc_str)
+                        st.metric("Brier", f"{info.get('brier_score', '—')}")
+                        st.metric("Samples", info["n_trained"])
+                        st.caption(f"Win rate: {info['win_rate']}%")
+                    else:
+                        st.markdown("⏳ **Not trained**")
+                        st.caption(info.get("msg", ""))
+                        st.metric("Graded bets", info["n_graded"])
+
+            st.markdown("---")
+            feat_col, train_col = st.columns([2, 1])
+            with feat_col:
+                st.markdown("**Features used:**")
+                st.markdown(
+                    "- Implied probability (de-vigged)\n"
+                    "- Opening → current odds delta (line movement)\n"
+                    "- Market group, line value, odds bucket\n"
+                    "- CLV at placement (if logged)\n"
+                    "- Underdog flag"
+                )
+            with train_col:
+                if st.button("🚀 Train All Models", key="train_lgbm"):
+                    with st.spinner("Training LightGBM models…"):
+                        results = train_models(force=True)
+                    ok = [s for s, r in results.items() if r.get("status") == "ok"]
+                    skip = [s for s, r in results.items() if r.get("status") != "ok"]
+                    if ok:
+                        st.success(f"✅ Trained: {', '.join(ok)}")
+                    if skip:
+                        st.info(f"⏭ Skipped (need more data): {', '.join(skip)}")
+                    if ok:
+                        st.rerun()
+
+        except Exception as _e:
+            st.error(f"ML model module error: {_e}")
+
+    # ── Steam / RLM ──────────────────────────────────────────────────────────
+    with steam_tab:
+        st.markdown("### ⚡ Steam Moves & Reverse Line Movement")
+        st.markdown(
+            "Detected from your odds snapshots. **Steam** = rapid line movement (sharp/syndicate money). "
+            "**RLM** = line drifts toward underdog side (sharp fade of public action)."
+        )
+        try:
+            from steam_detector import detect_steam_moves, detect_rlm, load_snapshots, steam_summary
+
+            _snaps = load_snapshots()
+
+            # Controls
+            sc1, sc2, sc3 = st.columns(3)
+            _sport_filter  = sc1.selectbox("Sport filter", ["All", "MLB", "NBA", "WNBA", "NHL"], key="steam_sport")
+            _min_move      = sc2.slider("Min move (cents)", 1, 20, 5, key="steam_min") / 100
+            _signal_filter = sc3.selectbox("Signal type", ["All", "Steam only", "RLM only", "Steam+RLM"], key="steam_sig")
+
+            with st.spinner("Scanning snapshots…"):
+                all_flags = detect_steam_moves(_snaps, min_move=_min_move)
+
+            # Sport filter
+            SPORT_MARKETS = {
+                "MLB":  {"pitcher_strikeouts","pitcher_outs_recorded","pitcher_hits_allowed",
+                         "pitcher_walks","pitcher_earned_runs","batter_hits","batter_total_bases",
+                         "batter_home_runs","batter_rbis","batter_runs_scored","batter_stolen_bases",
+                         "batter_hits_runs_rbis"},
+                "NBA":  {"player_points","player_rebounds","player_assists","player_threes",
+                         "player_steals","player_blocks","player_points_rebounds_assists",
+                         "player_points_rebounds","player_points_assists","player_double_double"},
+                "WNBA": {"player_points","player_rebounds","player_assists","player_threes",
+                         "player_steals","player_blocks","player_points_rebounds_assists"},
+                "NHL":  {"player_goals","player_assists","player_points",
+                         "player_shots_on_goal","player_saves","player_power_play_points"},
+            }
+            if _sport_filter != "All":
+                _markets = SPORT_MARKETS.get(_sport_filter, set())
+                all_flags = [f for f in all_flags if f["market"] in _markets]
+
+            # Signal filter
+            if _signal_filter == "Steam only":
+                all_flags = [f for f in all_flags if f["signal"] == "steam"]
+            elif _signal_filter == "RLM only":
+                all_flags = [f for f in all_flags if "rlm" in f["signal"]]
+            elif _signal_filter == "Steam+RLM":
+                all_flags = [f for f in all_flags if f["signal"] == "steam+rlm"]
+
+            # Summary metrics
+            summ = steam_summary(all_flags)
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Total Flags", summ.get("total", 0))
+            m2.metric("🔴 Strong",   summ.get("strong", 0))
+            m3.metric("🟡 Moderate", summ.get("moderate", 0))
+            m4.metric("🔄 RLM",      summ.get("rlm_count", 0))
+            m5.metric("Avg Move",    f"{summ.get('avg_move_c', 0)}¢")
+
+            # Table
+            if all_flags:
+                import pandas as _pd
+                _df_steam = _pd.DataFrame([{
+                    "Player":     f["player"],
+                    "Market":     f["market"],
+                    "Line":       f["line"],
+                    "Open Odds":  f"{f['open_odds']:+d}",
+                    "Curr Odds":  f"{f['curr_odds']:+d}",
+                    "Move (¢)":   f["move_cents"],
+                    "Direction":  "⬆️ Over" if f["move_direction"] == "toward_over" else "⬇️ Under",
+                    "Signal":     "⚡+🔄" if f["signal"] == "steam+rlm" else "⚡",
+                    "Strength":   f["strength"].title(),
+                    "Edge Open":  f"{f['edge_open']}%",
+                    "Edge Now":   f"{f['edge_current']}%",
+                } for f in all_flags[:200]])
+
+                def _color_strength(val):
+                    if val == "Strong":   return "color: #00ff88; font-weight: bold"
+                    if val == "Moderate": return "color: #f9c74f"
+                    return "color: #aaa"
+
+                st.dataframe(
+                    _df_steam.style.applymap(_color_strength, subset=["Strength"]),
+                    use_container_width=True, height=420,
+                )
+                st.caption(f"Showing {min(200, len(all_flags))} of {len(all_flags)} flags. "
+                           "Data from odds_snapshots.json — updates when scraper runs.")
+            else:
+                st.info("No steam/RLM flags found with current filters.")
+
+            # Move distribution chart
+            if len(all_flags) >= 5:
+                import plotly.graph_objects as _go2
+                _moves = [f["move_cents"] for f in all_flags]
+                _fig2 = _go2.Figure(_go2.Histogram(
+                    x=_moves, nbinsx=30,
+                    marker_color="#7c3aed", opacity=0.8,
+                ))
+                _fig2.update_layout(
+                    title="Line Move Distribution (cents of implied probability)",
+                    xaxis_title="Move Size (cents)",
+                    yaxis_title="Count",
+                    height=280,
+                    paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+                    font=dict(color="#eee"),
+                )
+                st.plotly_chart(_fig2, use_container_width=True)
+
+        except Exception as _e:
+            st.error(f"Steam detector error: {_e}")
+            import traceback as _tb
+            st.code(_tb.format_exc())
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     import os as _os
@@ -2373,13 +2634,13 @@ def main():
 
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["📈 CLV & ROI", "📊 Tracker"]
+    all_tab_labels = sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker"]
     all_tabs = st.tabs(all_tab_labels)
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["📈 CLV & ROI", "📊 Tracker"])], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker"])], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
@@ -2430,6 +2691,10 @@ RAPIDAPI_KEY=your_key_here
 
             else:
                 render_sport_tab(sport, use_live)
+
+    # ML Models tab (third from last)
+    with all_tabs[-3]:
+        _render_ml_tab()
 
     # CLV & ROI tab (second to last)
     with all_tabs[-2]:
