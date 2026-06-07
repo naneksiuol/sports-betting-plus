@@ -14,11 +14,27 @@ import requests
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent.parent / ".env")
-except ImportError:
-    pass
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
+
+def _load_env():
+    """Load .env file — tries python-dotenv first, falls back to manual parse."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_ENV_FILE, override=True)
+        return
+    except ImportError:
+        pass
+    # Manual fallback: parse KEY=VALUE lines directly into os.environ
+    if _ENV_FILE.exists():
+        for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                os.environ.setdefault(key.strip(), val.strip())
+
+
+_load_env()
 
 
 def get_webhook_url() -> str:
