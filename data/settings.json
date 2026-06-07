@@ -1,1 +1,101 @@
-{"starting_bankroll": 1000.0, "unit_size": 10.0, "kelly_multiplier": 0.25}
+{
+  "starting_bankroll": 10000.0,
+  "unit_size": 10.0,
+  "kelly_multiplier": 0.25,
+  "filters": {
+    "MLB": {
+      "markets": {
+        "batter_hits": true,
+        "batter_home_runs": true,
+        "batter_total_bases": true,
+        "batter_rbis": false,
+        "batter_runs_scored": false,
+        "batter_stolen_bases": false,
+        "batter_hits_runs_rbis": true,
+        "pitcher_strikeouts": true,
+        "pitcher_outs_recorded": false,
+        "pitcher_hits_allowed": false,
+        "pitcher_walks": false
+      },
+      "edge": 0.0,
+      "teams": [
+        "BAL @ TOR",
+        "CWS @ PHI",
+        "KC @ MIN",
+        "LAA @ LAD",
+        "MIL @ COL",
+        "SEA @ DET",
+        "SF @ CHC"
+      ],
+      "search": "",
+      "confirmed": false,
+      "shop_alerts": false,
+      "hot_streaks": false
+    },
+    "NBA": {
+      "markets": {
+        "player_points": true,
+        "player_rebounds": true,
+        "player_assists": true,
+        "player_threes": true,
+        "player_points_rebounds_assists": false,
+        "player_points_rebounds": false,
+        "player_points_assists": false,
+        "player_rebounds_assists": false,
+        "player_steals": false,
+        "player_blocks": false,
+        "player_turnovers": false,
+        "player_double_double": false,
+        "player_steals_blocks": false
+      },
+      "edge": 0.0,
+      "teams": [
+        "SAS @ NYK"
+      ],
+      "search": "",
+      "confirmed": false,
+      "shop_alerts": false,
+      "hot_streaks": false
+    },
+    "WNBA": {
+      "markets": {
+        "player_points": true,
+        "player_rebounds": true,
+        "player_assists": true,
+        "player_threes": true,
+        "player_points_rebounds_assists": false,
+        "player_points_rebounds": false,
+        "player_points_assists": false,
+        "player_rebounds_assists": false
+      },
+      "edge": 0.0,
+      "teams": [
+        "CHI @ TOR",
+        "POR @ LA"
+      ],
+      "search": "",
+      "confirmed": false,
+      "shop_alerts": false,
+      "hot_streaks": false
+    },
+    "NHL": {
+      "markets": {
+        "player_goals": false,
+        "player_assists": false,
+        "player_points": false,
+        "player_shots_on_goal": false,
+        "player_saves": false,
+        "player_blocked_shots": false,
+        "player_hits": false
+      },
+      "edge": 0.0,
+      "teams": [
+        "CAR @ VGK"
+      ],
+      "search": "",
+      "confirmed": false,
+      "shop_alerts": false,
+      "hot_streaks": false
+    }
+  }
+}
