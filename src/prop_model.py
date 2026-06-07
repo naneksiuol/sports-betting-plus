@@ -58,6 +58,8 @@ SNAP_FILE   = DATA_DIR / "odds_snapshots.json"
 MODEL_FILE  = DATA_DIR / "prop_lgbm_model.pkl"
 STATS_FILE  = DATA_DIR / "prop_lgbm_stats.json"
 
+ALL_SPORTS  = ["MLB", "NBA", "WNBA", "NHL"]
+
 
 # ── Feature engineering ───────────────────────────────────────────────────────
 
@@ -190,38 +192,58 @@ class PropModel:
     """
     LightGBM-based prop scoring model.
     Score 0-100 replaces raw edge confidence when enough data is available.
+    Can be initialised for a specific sport (per-sport model) or for all sports
+    combined (unified fallback model).
     """
 
-    MIN_SAMPLES = 30   # minimum graded bets before training
+    MIN_SAMPLES = 20   # minimum graded bets before training (per sport)
 
-    def __init__(self):
-        self._model  = None
-        self._stats  = {}
+    def __init__(self, sport: Optional[str] = None):
+        """
+        Parameters
+        ----------
+        sport : str or None
+            If given (e.g. "MLB"), this model trains/loads only on that sport's
+            bets and persists to ``data/prop_lgbm_{sport.lower()}.pkl``.
+            If None, behaves as the unified model using ``data/prop_lgbm_model.pkl``.
+        """
+        self._sport   = sport.upper() if sport else None
+        self._model   = None
+        self._stats   = {}
         self._trained = False
+
+        # Resolve file paths
+        if self._sport:
+            self._model_file = DATA_DIR / f"prop_lgbm_{self._sport.lower()}.pkl"
+            self._stats_file = DATA_DIR / f"prop_lgbm_{self._sport.lower()}_stats.json"
+        else:
+            self._model_file = MODEL_FILE
+            self._stats_file = STATS_FILE
+
         self._load()
 
     # ── Persistence ──────────────────────────────────────────────────────────
 
     def _load(self):
-        if MODEL_FILE.exists():
+        if self._model_file.exists():
             try:
-                bundle = pickle.loads(MODEL_FILE.read_bytes())
+                bundle = pickle.loads(self._model_file.read_bytes())
                 self._model   = bundle["model"]
                 self._stats   = bundle.get("stats", {})
                 self._trained = True
             except Exception:
                 pass
-        elif STATS_FILE.exists():
+        elif self._stats_file.exists():
             try:
-                self._stats = json.loads(STATS_FILE.read_text())
+                self._stats = json.loads(self._stats_file.read_text(encoding="utf-8"))
             except Exception:
                 pass
 
     def _save(self):
         if self._model is not None:
             bundle = {"model": self._model, "stats": self._stats}
-            MODEL_FILE.write_bytes(pickle.dumps(bundle))
-        STATS_FILE.write_text(json.dumps(self._stats, indent=2), encoding="utf-8")
+            self._model_file.write_bytes(pickle.dumps(bundle))
+        self._stats_file.write_text(json.dumps(self._stats, indent=2), encoding="utf-8")
 
     # ── Training ─────────────────────────────────────────────────────────────
 
@@ -242,6 +264,10 @@ class PropModel:
         if snaps is None:
             snaps = json.loads(SNAP_FILE.read_text(encoding="utf-8")) if SNAP_FILE.exists() else {}
 
+        # Filter to this sport if we're a per-sport model
+        if self._sport:
+            bets = [b for b in bets if str(b.get("sport", "")).upper() == self._sport]
+
         snap_idx = _build_snap_index(snaps)
 
         X_raw, y_raw = [], []
@@ -253,11 +279,13 @@ class PropModel:
                 y_raw.append(label)
 
         n = len(X_raw)
+        sport_label = f" ({self._sport})" if self._sport else ""
         if n < self.MIN_SAMPLES:
             self._stats = {
                 "status": "insufficient_data",
                 "n_samples": n,
-                "msg": f"Need ≥{self.MIN_SAMPLES} graded bets, have {n}.",
+                "sport": self._sport,
+                "msg": f"Need ≥{self.MIN_SAMPLES} graded bets{sport_label}, have {n}.",
             }
             return self._stats
 
@@ -321,6 +349,7 @@ class PropModel:
         self._trained = True
         self._stats   = {
             "status":       "ok",
+            "sport":        self._sport,
             "n_samples":    n,
             "n_wins":       int(y.sum()),
             "win_rate":     round(float(y.mean()), 4),
@@ -331,7 +360,7 @@ class PropModel:
             "importances":  importances,
             "params":       {k: v for k, v in params.items() if k not in ("verbose", "n_jobs", "random_state")},
             "quality":      _auc_quality(cv_auc or auc),
-            "msg":          f"LightGBM trained on {n} bets | AUC={auc:.3f} | Brier={brier:.3f}",
+            "msg":          f"LightGBM{sport_label} trained on {n} bets | AUC={auc:.3f} | Brier={brier:.3f}",
         }
         self._save()
         return self._stats
@@ -472,22 +501,78 @@ def _auc_quality(auc: float) -> str:
         return "Needs more data"
 
 
-# ── Module-level singleton ─────────────────────────────────────────────────────
+# ── Module-level singleton and per-sport registry ─────────────────────────────
 
 _prop_model: Optional[PropModel] = None
+_model_registry: dict[str, PropModel] = {}
 
 
 def get_model() -> PropModel:
+    """Return the unified (all-sports) model singleton."""
     global _prop_model
     if _prop_model is None:
         _prop_model = PropModel()
     return _prop_model
 
 
-def train_prop_model(bets=None, snaps=None) -> dict:
-    """Train (or retrain) the prop model. Returns stats dict."""
-    m = get_model()
-    return m.train(bets=bets, snaps=snaps)
+def get_prop_model(sport: str) -> PropModel:
+    """
+    Return cached per-sport model, initialising from disk if not yet loaded.
+    Falls back to unified model if no sport-specific file exists yet.
+    """
+    key = sport.upper()
+    if key not in _model_registry:
+        m = PropModel(sport=key)
+        # If sport-specific model isn't trained, fall back to unified
+        if not m.is_trained and MODEL_FILE.exists():
+            m = get_model()
+        _model_registry[key] = m
+    return _model_registry[key]
+
+
+def train_prop_model(sport: Optional[str] = None, bets=None, snaps=None) -> dict:
+    """
+    Train (or retrain) the prop model.
+
+    Parameters
+    ----------
+    sport : str or None
+        If given, train only that sport's model.
+        If None, train all sports (MLB, NBA, WNBA, NHL) in sequence and also
+        retrain the unified model.  Returns a dict keyed by sport (plus
+        ``"unified"``).
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    if sport is not None:
+        # Single-sport training
+        key = sport.upper()
+        m = PropModel(sport=key)
+        result = m.train(bets=bets, snaps=snaps)
+        _model_registry[key] = m
+        return result
+
+    # Train all sports then the unified model
+    results: dict = {}
+    for s in ALL_SPORTS:
+        log.info("Training per-sport model: %s", s)
+        m = PropModel(sport=s)
+        r = m.train(bets=bets, snaps=snaps)
+        _model_registry[s] = m
+        results[s] = r
+        if r.get("status") == "insufficient_data":
+            log.warning("Skipping %s model — insufficient data: %s", s, r.get("msg"))
+        else:
+            log.info("%s model: %s", s, r.get("msg", r.get("status")))
+
+    # Also retrain the unified model for backwards compatibility
+    log.info("Training unified (all-sports) model…")
+    global _prop_model
+    _prop_model = PropModel()
+    r_unified = _prop_model.train(bets=bets, snaps=snaps)
+    results["unified"] = r_unified
+    return results
 
 
 def score_prop(
@@ -499,8 +584,12 @@ def score_prop(
     edge: float = 0.0,
     fair_est: float = 0.5,
 ) -> int:
-    """Convenience wrapper — returns ML score 0-100 for a single prop."""
-    return get_model().predict_score(
+    """
+    Convenience wrapper — returns ML score 0-100 for a single prop.
+    Uses the sport-specific model when available, falls back to unified.
+    """
+    model = get_prop_model(sport) if sport else get_model()
+    return model.predict_score(
         odds=odds, line=line, market=market, sport=sport,
         opening_odds=opening_odds, edge=edge, fair_est=fair_est,
     )
@@ -509,10 +598,21 @@ def score_prop(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("Training LightGBM prop model…")
-    stats = train_prop_model()
-    print(json.dumps({k: v for k, v in stats.items() if k != "params"}, indent=2))
-    m = get_model()
+    import sys as _sys
+    _sport_arg = _sys.argv[1].upper() if len(_sys.argv) > 1 else None
+    if _sport_arg:
+        print(f"Training LightGBM prop model for {_sport_arg}…")
+        stats = train_prop_model(sport=_sport_arg)
+        print(json.dumps({k: v for k, v in stats.items() if k != "params"}, indent=2))
+        m = get_prop_model(_sport_arg)
+    else:
+        print("Training LightGBM prop models (all sports + unified)…")
+        all_stats = train_prop_model()
+        for s, st in all_stats.items():
+            filtered = {k: v for k, v in st.items() if k != "params"}
+            print(f"\n--- {s} ---")
+            print(json.dumps(filtered, indent=2))
+        m = get_model()
     print("\nSummary:", m.summary())
     print("Top features:", m.feature_importance_str())
     print()

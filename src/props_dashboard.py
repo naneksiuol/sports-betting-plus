@@ -40,6 +40,7 @@ from edge_model import (
     get_market_pair_rho,
 )
 from bet_tracker import get_clv_avg
+from settings_manager import load_settings, save_settings
 
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -1576,6 +1577,13 @@ def render_sport_tab(sport: str, use_live: bool):
             help="Show only props where a 5+ pt better line is available at another book.",
         )
 
+        hot_streaks_only = st.toggle(
+            "🔥 Hot streaks only",
+            value=False,
+            key=f"hot_streaks_{sport}",
+            help="Show only props where the player hit this line in 4+ of their last 5 games.",
+        )
+
         # Reset button
         if st.button("🔄 Reset Filters", use_container_width=True, key=f"reset_{sport}"):
             # Write to shadow keys — read on next run before widgets instantiate
@@ -1593,9 +1601,17 @@ def render_sport_tab(sport: str, use_live: bool):
     except Exception:
         pass
 
+    # ── Streak enrichment — adds "streak" and "hot" columns ──────────────────
+    try:
+        from streak_detector import get_streaks_for_df
+        df = get_streaks_for_df(df, sport)
+    except Exception:
+        pass
+
     cache_key = f"filtered_{sport}"
     _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
     _shop_mask = (df["shop_alert"] == True) if (shop_alerts_only and "shop_alert" in df.columns) else pd.Series(True, index=df.index)
+    _hot_mask  = (df["hot"] == True) if (hot_streaks_only and "hot" in df.columns) else pd.Series(True, index=df.index)
     filtered = df[
         (df["market"].isin(selected_markets))
         & (df["edge"] >= edge_threshold)
@@ -1603,6 +1619,7 @@ def render_sport_tab(sport: str, use_live: bool):
         & (df["player"].str.contains(player_search, case=False, na=False))
         & _conf_mask
         & _shop_mask
+        & _hot_mask
     ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
@@ -1651,6 +1668,13 @@ def render_sport_tab(sport: str, use_live: bool):
         best_edge  = float(best.get("edge", 0))
         best_fair  = float(best.get("fair_est", 0.5))
         confirmed_badge = " ✅ Both models agree" if best.get("edge_confirmed") else ""
+        _best_streak = best.get("streak", "")
+        _streak_badge_html = (
+            f' <span style="background:#2d1a00;border:1px solid #ff8c00;border-radius:12px;'
+            f'padding:1px 8px;font-size:0.78rem;color:#ff8c00;font-weight:700;'
+            f'vertical-align:middle;">{_best_streak}</span>'
+            if _best_streak else ""
+        )
         bar_pct = best_conf  # 0–100
 
         st.markdown(f"""
@@ -1659,7 +1683,7 @@ def render_sport_tab(sport: str, use_live: bool):
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
     <div>
       <span style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:1px;">🏆 Best Bet of the Day</span><br>
-      <span style="font-size:1.3rem;font-weight:700;color:#fff;">{best['player']}</span>
+      <span style="font-size:1.3rem;font-weight:700;color:#fff;">{best['player']}</span>{_streak_badge_html}
       <span style="font-size:0.95rem;color:#aaa;margin-left:0.5rem;">{best_prop} O{best.get('line','')} · {best_odds_fmt}</span>
     </div>
     <div style="text-align:right;">
@@ -1762,6 +1786,11 @@ def render_sport_tab(sport: str, use_live: bool):
         from line_movement import snapshot_key, format_movement
         bankroll = st.session_state.get("bankroll_input", 1000.0)
         kelly_mult = st.session_state.get("kelly_mult", 0.25)
+        # Pull persisted settings for unit-size-scaled Kelly display
+        _persisted_settings = st.session_state.get("settings", load_settings())
+        _unit_size_display = float(_persisted_settings.get("unit_size", 10.0))
+        # Use saved kelly_multiplier if set (overrides sidebar slider when saved)
+        _saved_kelly_mult = float(_persisted_settings.get("kelly_multiplier", kelly_mult))
 
         base_cols = ["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge"]
         display_df = filtered[base_cols].copy()
@@ -1772,9 +1801,14 @@ def render_sport_tab(sport: str, use_live: bool):
             display_df["Conf"] = filtered["confidence"].apply(
                 lambda s: f"{int(s)}/100")
 
-        # Dynamic Kelly stake — uses real CLV history for sizing
-        display_df["Kelly"] = filtered.apply(
-            lambda r: f"${recommended_stake(r['fair_est'], r['over_odds'], bankroll, kelly_mult, clv_avg=_clv_avg_global)['stake']:.2f}", axis=1)
+        # Dynamic Kelly stake — scaled by unit size from settings
+        def _kelly_display(r):
+            raw = recommended_stake(r['fair_est'], r['over_odds'], bankroll, _saved_kelly_mult, clv_avg=_clv_avg_global)
+            kelly_fraction_val = raw['recommended_pct'] / 100.0
+            unit_dollar = kelly_fraction_val * _unit_size_display
+            return f"${raw['stake']:.2f} (Kelly: ${unit_dollar:.2f})"
+
+        display_df["Kelly"] = filtered.apply(_kelly_display, axis=1)
 
         # Edge signal
         display_df["Signal"] = filtered["edge"].apply(edge_rating)
@@ -1910,6 +1944,46 @@ def render_sport_tab(sport: str, use_live: bool):
                             "No significant line differences detected. "
                             "FanDuel and DraftKings are within 5 pts on all current props."
                         )
+        except Exception:
+            pass
+
+        # ── Hot Streak expander ───────────────────────────────────────────────
+        try:
+            if "streak" in filtered.columns:
+                _hot_rows = filtered[filtered["hot"] == True] if "hot" in filtered.columns else pd.DataFrame()
+                _n_hot = len(_hot_rows)
+                _streak_label = (
+                    f"🔥 Hot Streaks — {_n_hot} player(s) on a run"
+                    if _n_hot > 0
+                    else "🔥 Hot Streaks — no players with 4/5 streak"
+                )
+                with st.expander(_streak_label, expanded=(_n_hot > 0)):
+                    if _n_hot > 0:
+                        st.caption("Players who exceeded this line in 4+ of their last 5 games")
+                        _streak_display = _hot_rows[
+                            [c for c in ["player", "team", "market", "line", "over_odds", "edge", "streak"]
+                             if c in _hot_rows.columns]
+                        ].copy()
+                        _streak_display["market"] = _streak_display["market"].map(
+                            lambda k: market_labels.get(k, k)
+                        )
+                        _streak_display.columns = [
+                            {"player": "Player", "team": "Team/Game", "market": "Prop",
+                             "line": "Line", "over_odds": "Odds", "edge": "Edge",
+                             "streak": "Streak (last 5)"}.get(c, c)
+                            for c in _streak_display.columns
+                        ]
+                        if "Odds" in _streak_display.columns:
+                            _streak_display["Odds"] = _streak_display["Odds"].apply(
+                                lambda x: f"+{int(x)}" if pd.notna(x) and x > 0 else (str(int(x)) if pd.notna(x) else "—")
+                            )
+                        if "Edge" in _streak_display.columns:
+                            _streak_display["Edge"] = _streak_display["Edge"].apply(
+                                lambda x: f"{x:.1%}" if pd.notna(x) else "—"
+                            )
+                        st.dataframe(_streak_display, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No players currently on a 4/5 hot streak for their listed line.")
         except Exception:
             pass
 
@@ -2931,6 +3005,45 @@ def main():
                                       format_func=lambda x: {0.1: "1/10 (Very Safe)", 0.25: "1/4 (Recommended)", 0.5: "1/2 (Aggressive)", 1.0: "Full (Risky)"}[x],
                                       key="kelly_mult")
         st.caption("¼ Kelly is the professional standard. Full Kelly risks ruin.")
+
+        # ── Bankroll Settings (unit size / kelly multiplier persisted to disk) ──
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Bankroll Settings")
+        st.session_state.setdefault("settings", load_settings())
+        _s = st.session_state["settings"]
+        _starting_bankroll = st.sidebar.number_input(
+            "Starting Bankroll ($)",
+            min_value=10.0,
+            max_value=10_000_000.0,
+            value=float(_s.get("starting_bankroll", 1000.0)),
+            step=50.0,
+            key="settings_starting_bankroll",
+        )
+        _unit_size = st.sidebar.number_input(
+            "Unit Size ($)",
+            min_value=0.50,
+            max_value=100_000.0,
+            value=float(_s.get("unit_size", 10.0)),
+            step=1.0,
+            key="settings_unit_size",
+        )
+        _kelly_multiplier = st.sidebar.number_input(
+            "Kelly Multiplier",
+            min_value=0.01,
+            max_value=1.0,
+            value=float(_s.get("kelly_multiplier", 0.25)),
+            step=0.01,
+            key="settings_kelly_multiplier",
+        )
+        if st.sidebar.button("💾 Save Settings", key="save_settings_btn"):
+            _new_settings = {
+                "starting_bankroll": _starting_bankroll,
+                "unit_size": _unit_size,
+                "kelly_multiplier": _kelly_multiplier,
+            }
+            save_settings(_new_settings)
+            st.session_state["settings"] = _new_settings
+            st.sidebar.success("Saved!")
 
         # ── Kelly Portfolio Optimizer (sidebar) ──
         st.divider()
