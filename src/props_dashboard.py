@@ -1809,10 +1809,21 @@ def render_sport_tab(sport: str, use_live: bool):
 
         # Dynamic Kelly stake — scaled by unit size from settings
         def _kelly_display(r):
-            raw = recommended_stake(r['fair_est'], r['over_odds'], bankroll, _saved_kelly_mult, clv_avg=_clv_avg_global)
-            kelly_fraction_val = raw['recommended_pct'] / 100.0
-            unit_dollar = kelly_fraction_val * _unit_size_display
-            return f"${raw['stake']:.2f} (Kelly: ${unit_dollar:.2f})"
+            try:
+                odds = r['over_odds']
+                fair = r['fair_est']
+                if odds is None or fair is None:
+                    return "—"
+                odds = float(odds)
+                fair = float(fair)
+                if odds == 0 or pd.isna(odds) or pd.isna(fair):
+                    return "—"
+                raw = recommended_stake(fair, odds, bankroll, _saved_kelly_mult, clv_avg=_clv_avg_global)
+                kelly_fraction_val = raw['recommended_pct'] / 100.0
+                unit_dollar = kelly_fraction_val * _unit_size_display
+                return f"${raw['stake']:.2f} (Kelly: ${unit_dollar:.2f})"
+            except Exception:
+                return "—"
 
         display_df["Kelly"] = filtered.apply(_kelly_display, axis=1)
 
@@ -3013,11 +3024,11 @@ def main():
         st.caption("¼ Kelly is the professional standard. Full Kelly risks ruin.")
 
         # ── Bankroll Settings (unit size / kelly multiplier persisted to disk) ──
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("Bankroll Settings")
+        st.markdown("---")
+        st.subheader("Bankroll Settings")
         st.session_state.setdefault("settings", load_settings())
         _s = st.session_state["settings"]
-        _starting_bankroll = st.sidebar.number_input(
+        _starting_bankroll = st.number_input(
             "Starting Bankroll ($)",
             min_value=10.0,
             max_value=10_000_000.0,
@@ -3025,7 +3036,7 @@ def main():
             step=50.0,
             key="settings_starting_bankroll",
         )
-        _unit_size = st.sidebar.number_input(
+        _unit_size = st.number_input(
             "Unit Size ($)",
             min_value=0.50,
             max_value=100_000.0,
@@ -3033,7 +3044,7 @@ def main():
             step=1.0,
             key="settings_unit_size",
         )
-        _kelly_multiplier = st.sidebar.number_input(
+        _kelly_multiplier = st.number_input(
             "Kelly Multiplier",
             min_value=0.01,
             max_value=1.0,
@@ -3041,7 +3052,7 @@ def main():
             step=0.01,
             key="settings_kelly_multiplier",
         )
-        if st.sidebar.button("💾 Save Settings", key="save_settings_btn"):
+        if st.button("💾 Save Settings", key="save_settings_btn"):
             _new_settings = {
                 "starting_bankroll": _starting_bankroll,
                 "unit_size": _unit_size,
