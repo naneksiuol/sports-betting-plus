@@ -21,7 +21,7 @@ TIERS = {
     "standard": {
         "label": "Standard",
         "price_monthly": 9,
-        "price_id": "",             # fill in after Stripe setup
+        "price_id": "price_1TfpdV24pu2fgt6EW58z5afY",
         "sports": ["MLB", "NBA", "WNBA", "NHL", "NFL", "NCAAF"],
         "parlays": True,
         "game_lines": True,
@@ -35,7 +35,7 @@ TIERS = {
     "premium": {
         "label": "Premium",
         "price_monthly": 29,
-        "price_id": "",             # fill in after Stripe setup
+        "price_id": "price_1Tfped24pu2fgt6EheFe6XlM",
         "sports": ["MLB", "NBA", "WNBA", "NHL", "NFL", "NCAAF"],
         "parlays": True,
         "game_lines": True,
