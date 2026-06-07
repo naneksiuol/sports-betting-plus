@@ -1806,6 +1806,104 @@ def render_sport_tab(sport: str, use_live: bool):
             top_df["Book Implied"] = top_df["Book Implied"].apply(lambda x: f"{x:.1%}")
             top_df["Edge"] = top_df["Edge"].apply(lambda x: f"{x:.1%}")
             st.dataframe(top_df, use_container_width=True, hide_index=True)
+
+            # ── Manual Parlay Builder ─────────────────────────────────────────
+            st.markdown("#### 🛠️ Manual Parlay Builder")
+            st.caption("Select legs from the Top 20 above to build a custom parlay.")
+
+            _top_rows = report["top10"]
+            _leg_labels = [
+                f"{r['player']} — {market_labels.get(r['market'], r['market'])} O{r['line']} "
+                f"({'+'if int(r['over_odds'])>0 else ''}{int(r['over_odds'])}) "
+                f"[Edge: {r['edge']:+.1%}]"
+                for r in _top_rows
+            ]
+            _label_to_row = dict(zip(_leg_labels, _top_rows))
+
+            _parlay_key_ms = f"manual_parlay_sel_{sport}"
+            _selected_labels = st.multiselect(
+                "Pick 2–8 legs:",
+                options=_leg_labels,
+                default=st.session_state.get(_parlay_key_ms, []),
+                key=_parlay_key_ms,
+                placeholder="Choose players from the Top 20…",
+            )
+            _selected_rows = [_label_to_row[l] for l in _selected_labels if l in _label_to_row]
+
+            if len(_selected_rows) >= 2:
+                # ── Compute combined parlay ──
+                from parlay_builder import parlay_payout, parlay_ev
+                from edge_model import gaussian_copula_joint
+
+                _legs_odds  = [int(r["over_odds"]) for r in _selected_rows]
+                _payout     = parlay_payout(_legs_odds, stake)
+                _ev         = parlay_ev(_selected_rows, stake)
+
+                # Copula joint probability (accounts for correlations)
+                _copula_legs = [{"fair_est": r.get("fair_est", r.get("book_implied", 0.5)),
+                                  "market": r["market"],
+                                  "player": r["player"]} for r in _selected_rows]
+                _joint_prob  = gaussian_copula_joint(_copula_legs)
+                _naive_prob  = 1.0
+                for r in _selected_rows:
+                    _naive_prob *= r.get("fair_est", r.get("book_implied", 0.5))
+
+                # Display metrics
+                _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
+                _mc1.metric("Legs", len(_selected_rows))
+                _mc2.metric("Combined Odds", _payout.get("american_odds", "—"))
+                _mc3.metric(f"Payout (${stake:.0f})", f"${_payout.get('payout', 0):.2f}")
+                _mc4.metric("Joint Prob (Copula)", f"{_joint_prob:.2%}")
+                _ev_dollars = _ev.get("ev_dollars", 0)
+                _mc5.metric("EV", f"${_ev_dollars:+.2f}", delta_color="normal" if _ev_dollars >= 0 else "inverse")
+
+                # Leg breakdown table
+                _leg_rows = []
+                for r in _selected_rows:
+                    _o = int(r["over_odds"])
+                    _leg_rows.append({
+                        "Player":       r["player"],
+                        "Prop":         market_labels.get(r["market"], r["market"]),
+                        "Line":         r["line"],
+                        "Odds":         f"+{_o}" if _o > 0 else str(_o),
+                        "Fair Prob":    f"{r.get('fair_est', r.get('book_implied', 0)):.1%}",
+                        "Edge":         f"{r.get('edge', 0):+.1%}",
+                        "Team/Game":    r.get("team", ""),
+                    })
+                st.dataframe(pd.DataFrame(_leg_rows), use_container_width=True, hide_index=True)
+
+                # Corr warning if same-player legs detected
+                _players = [r["player"] for r in _selected_rows]
+                if len(_players) != len(set(_players)):
+                    st.warning("⚠️ Same-player legs detected — correlation penalty applied to joint probability.")
+                if _joint_prob < _naive_prob * 0.85:
+                    st.info(f"📉 Correlation reduces joint prob from {_naive_prob:.2%} → {_joint_prob:.2%} "
+                            f"({(_joint_prob/_naive_prob - 1)*100:.1f}%)")
+
+                # Log to bet tracker button
+                _combined_american = _payout.get("american_odds", "+100")
+                _combined_int = int(_combined_american.replace("+", "")) if "+" in str(_combined_american) else int(_combined_american)
+                if st.button("📝 Log This Parlay to Tracker", key=f"log_manual_parlay_{sport}"):
+                    from bet_tracker import add_bet
+                    _leg_desc = " + ".join(
+                        f"{r['player']} {market_labels.get(r['market'], r['market'])} O{r['line']}"
+                        for r in _selected_rows
+                    )
+                    add_bet(
+                        sport=sport,
+                        player="Manual Parlay",
+                        prop=f"{len(_selected_rows)}-Leg: {_leg_desc}",
+                        line=0.0,
+                        odds=_combined_int,
+                        stake=stake,
+                        notes=f"Manual parlay built from Top 20 | EV ${_ev_dollars:+.2f}",
+                        is_parlay=True,
+                    )
+                    st.success("✅ Parlay logged to bet tracker!")
+
+            elif len(_selected_rows) == 1:
+                st.info("Select at least 2 legs to build a parlay.")
+
         else:
             st.info("No value plays found after edge filtering. Try lowering the Min Edge slider.")
 
