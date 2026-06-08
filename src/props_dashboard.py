@@ -3326,7 +3326,7 @@ def main():
                 """, unsafe_allow_html=True)
                 if _SUPABASE_CONFIGURED:
                     import auth_ui
-                    auth_ui.show_upgrade_modal("standard", key="sports")
+                    auth_ui.show_upgrade_modal("standard", key=f"sports_{i}")
                 continue
 
             if status == "coming_soon":
