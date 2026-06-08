@@ -2162,7 +2162,7 @@ def render_sport_tab(sport: str, use_live: bool):
             """, unsafe_allow_html=True)
             if _SUPABASE_CONFIGURED:
                 import auth_ui
-                auth_ui.show_upgrade_modal("standard")
+                auth_ui.show_upgrade_modal("standard", key="parlays")
             return
         from parlay_builder import build_parlay_report
 
@@ -3326,7 +3326,7 @@ def main():
                 """, unsafe_allow_html=True)
                 if _SUPABASE_CONFIGURED:
                     import auth_ui
-                    auth_ui.show_upgrade_modal("standard")
+                    auth_ui.show_upgrade_modal("standard", key="sports")
                 continue
 
             if status == "coming_soon":
@@ -3380,7 +3380,7 @@ RAPIDAPI_KEY=your_key_here
             """, unsafe_allow_html=True)
             if _SUPABASE_CONFIGURED:
                 import auth_ui
-                auth_ui.show_upgrade_modal("premium")
+                auth_ui.show_upgrade_modal("premium", key="tracker")
         else:
             render_bet_tracker()
 
