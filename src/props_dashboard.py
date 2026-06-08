@@ -1643,6 +1643,13 @@ def render_sport_tab(sport: str, use_live: bool):
     except Exception:
         pass
 
+    # ── ESPN injury enrichment — flag injured players ─────────────────────────
+    try:
+        from espn_service import flag_injured_props
+        df = flag_injured_props(df, sport)
+    except Exception:
+        df["injury_status"] = ""
+
     # ── Streak enrichment — adds "streak" and "hot" columns ──────────────────
     # Only fetch for top-edge rows (max 30) to avoid blocking the page on 1000+
     # API calls. Remaining rows get empty streak so the table still renders fast.
@@ -2042,6 +2049,53 @@ def render_sport_tab(sport: str, use_live: bool):
                         st.dataframe(_streak_display, use_container_width=True, hide_index=True)
                     else:
                         st.info("No players currently on a 4/5 hot streak for their listed line.")
+        except Exception:
+            pass
+
+        # ── ESPN Injury Alerts ────────────────────────────────────────────────
+        try:
+            if "injury_status" in df.columns:
+                _inj_rows = df[df["injury_status"].isin(["Out", "Doubtful", "Questionable"])]
+                _n_inj = len(_inj_rows)
+                _inj_label = (
+                    f"🚑 Injury Alerts — {_n_inj} prop(s) with injured players"
+                    if _n_inj > 0
+                    else "🚑 Injury Alerts — no flagged injuries"
+                )
+                with st.expander(_inj_label, expanded=(_n_inj > 0)):
+                    if _n_inj > 0:
+                        st.caption("⚠️ These players have active injury flags from ESPN. Bet with caution.")
+                        _inj_disp = _inj_rows[[c for c in ["player","team","market","line","over_odds","edge","injury_status"] if c in _inj_rows.columns]].copy()
+                        _inj_disp["market"] = _inj_disp["market"].map(lambda k: market_labels.get(k, k))
+                        _inj_disp.columns = [{"player":"Player","team":"Team/Game","market":"Prop","line":"Line","over_odds":"Odds","edge":"Edge","injury_status":"Injury Status"}.get(c,c) for c in _inj_disp.columns]
+                        if "Odds" in _inj_disp.columns:
+                            _inj_disp["Odds"] = _inj_disp["Odds"].apply(lambda x: f"+{int(x)}" if pd.notna(x) and x > 0 else (str(int(x)) if pd.notna(x) else "—"))
+                        if "Edge" in _inj_disp.columns:
+                            _inj_disp["Edge"] = _inj_disp["Edge"].apply(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
+                        def _inj_color(s):
+                            colors = {"Out": "background-color:#ff4444;color:white", "Doubtful": "background-color:#ff8c00;color:white", "Questionable": "background-color:#ffd700;color:black"}
+                            return [colors.get(v, "") for v in s]
+                        st.dataframe(_inj_disp.style.apply(_inj_color, subset=["Injury Status"]) if "Injury Status" in _inj_disp.columns else _inj_disp, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No injury flags from ESPN for current props.")
+        except Exception:
+            pass
+
+        # ── ESPN News Feed ────────────────────────────────────────────────────
+        try:
+            with st.expander(f"📰 ESPN News — {sport}", expanded=False):
+                from espn_service import get_news
+                _news = get_news(sport, limit=8)
+                if _news:
+                    for _item in _news:
+                        st.markdown(f"**{_item['headline']}**")
+                        if _item.get("description"):
+                            st.caption(_item["description"])
+                        if _item.get("link"):
+                            st.markdown(f"[Read →]({_item['link']})&nbsp;&nbsp;<span style='color:#555;font-size:11px;'>{_item.get('published','')[:10]}</span>", unsafe_allow_html=True)
+                        st.divider()
+                else:
+                    st.info("No ESPN news available right now.")
         except Exception:
             pass
 

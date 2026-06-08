@@ -388,6 +388,168 @@ def _nhl_streak(player: str, market: str, line: float, n_games: int) -> dict:
     return {"hits": count, "games": games, "pct": pct, "hot": count >= 4 and games >= 5}
 
 
+# ── ESPN fallback ─────────────────────────────────────────────────────────────
+
+# ESPN sport/league slugs for the two endpoints used below
+_ESPN_SPORT_LEAGUE = {
+    "MLB":  ("baseball", "mlb"),
+    "NBA":  ("basketball", "nba"),
+    "WNBA": ("basketball", "wnba"),
+    "NHL":  ("hockey", "nhl"),
+}
+
+# ESPN stat-field maps: market → stat key in ESPN game-log response
+# We reuse the existing maps where field names match; ESPN uses slightly
+# different names for some fields so we define a dedicated ESPN map.
+_ESPN_STAT_MAP: dict[str, object] = {
+    # MLB batting
+    "batter_hits":           "hits",
+    "batter_home_runs":      "homeRuns",
+    "batter_total_bases":    "totalBases",
+    "batter_rbis":           "RBIs",
+    "batter_runs_scored":    "runs",
+    "batter_stolen_bases":   "stolenBases",
+    "batter_strikeouts":     "strikeouts",
+    # MLB pitching
+    "pitcher_strikeouts":    "strikeouts",
+    "pitcher_hits_allowed":  "hitsAllowed",
+    "pitcher_outs_recorded": "outsPitched",
+    "pitcher_walks":         "walks",
+    "pitcher_saves":         "saves",
+    # NBA
+    "player_points":                  "points",
+    "player_rebounds":                "rebounds",
+    "player_assists":                 "assists",
+    "player_threes":                  "threePointFieldGoalsMade",
+    "player_steals":                  "steals",
+    "player_blocks":                  "blockedShots",
+    "player_turnovers":               "turnovers",
+    "player_points_rebounds_assists": lambda r: (r.get("points",0) or 0)
+                                                + (r.get("rebounds",0) or 0)
+                                                + (r.get("assists",0) or 0),
+    "player_points_rebounds":         lambda r: (r.get("points",0) or 0)
+                                                + (r.get("rebounds",0) or 0),
+    "player_points_assists":          lambda r: (r.get("points",0) or 0)
+                                                + (r.get("assists",0) or 0),
+    "player_rebounds_assists":        lambda r: (r.get("rebounds",0) or 0)
+                                                + (r.get("assists",0) or 0),
+    "player_steals_blocks":           lambda r: (r.get("steals",0) or 0)
+                                                + (r.get("blockedShots",0) or 0),
+    # NHL
+    "player_goals":          "goals",
+    "player_assists":        "assists",
+    "player_shots_on_goal":  "shots",
+    "player_saves":          "saves",
+    "player_blocked_shots":  "blockedShots",
+    "player_points":         lambda r: (r.get("goals",0) or 0)
+                                       + (r.get("assists",0) or 0),
+}
+
+
+def _espn_player_id(player: str, sport: str) -> str | None:
+    """Search ESPN for a player ID by name."""
+    slugs = _ESPN_SPORT_LEAGUE.get(sport.upper())
+    if slugs is None:
+        return None
+    sport_slug, league_slug = slugs
+    try:
+        r = requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/{sport_slug}/{league_slug}/athletes",
+            params={"search": player, "limit": 5},
+            timeout=5,
+        )
+        if r.status_code != 200:
+            return None
+        athletes = r.json().get("athletes", [])
+        if not athletes:
+            return None
+        name_norm = _normalize(player)
+        # Try exact normalized match first
+        for a in athletes:
+            if _normalize(a.get("fullName", a.get("displayName", ""))) == name_norm:
+                return str(a["id"])
+        # Fall back to first result
+        return str(athletes[0]["id"])
+    except Exception:
+        return None
+
+
+def _espn_game_log(player_id: str, sport: str) -> list[dict]:
+    """Fetch ESPN game-log stats for a player; returns list newest-first."""
+    slugs = _ESPN_SPORT_LEAGUE.get(sport.upper())
+    if slugs is None:
+        return []
+    sport_slug, league_slug = slugs
+    try:
+        r = requests.get(
+            f"https://site.web.api.espn.com/apis/common/v3/sports/{sport_slug}/{league_slug}/athletes/{player_id}/stats",
+            timeout=5,
+        )
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        # ESPN returns stats under "splits" > "categories" > "stats" per game
+        # The game-log is under data["splitCategories"] or data["stats"]["splits"]
+        # Try the splits path used by the athlete stats endpoint
+        splits = data.get("splits", {})
+        categories = splits.get("categories", [])
+        rows = []
+        for cat in categories:
+            for event in cat.get("events", []):
+                stat_names  = cat.get("labels", [])
+                stat_values = event.get("stats", [])
+                row = {stat_names[i]: stat_values[i]
+                       for i in range(min(len(stat_names), len(stat_values)))}
+                rows.append(row)
+        # Reverse so newest is first (ESPN returns oldest-first in this endpoint)
+        return list(reversed(rows))
+    except Exception:
+        return []
+
+
+def _espn_streak(player: str, market: str, sport: str,
+                 line: float, n_games: int = 5) -> dict:
+    """
+    ESPN fallback streak detector.
+    Looks up player ID via ESPN search, fetches game-log stats, and counts
+    how many of the last n_games the player exceeded `line` in `market`.
+    Returns same dict shape as _mlb_streak / _nba_streak / _nhl_streak.
+    """
+    mkt_lower = market.lower()
+    stat_cfg = None
+    for key in sorted(_ESPN_STAT_MAP.keys(), key=len, reverse=True):
+        if key in mkt_lower:
+            stat_cfg = _ESPN_STAT_MAP[key]
+            break
+    if stat_cfg is None:
+        return _EMPTY
+
+    pid = _espn_player_id(player, sport)
+    if pid is None:
+        return _EMPTY
+
+    logs = _espn_game_log(pid, sport)
+    if not logs:
+        return _EMPTY
+
+    recent = logs[:n_games]
+    games  = len(recent)
+    if games == 0:
+        return _EMPTY
+
+    count = 0
+    for g in recent:
+        val = stat_cfg(g) if callable(stat_cfg) else (g.get(stat_cfg) or 0)
+        try:
+            if float(val) > float(line):
+                count += 1
+        except (TypeError, ValueError):
+            pass
+
+    pct = round(count / games, 3)
+    return {"hits": count, "games": games, "pct": pct, "hot": count >= 4 and games >= 5}
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def get_player_streak(player: str, market: str, sport: str,
@@ -408,14 +570,24 @@ def get_player_streak(player: str, market: str, sport: str,
     try:
         sport_up = sport.upper()
         if sport_up == "MLB":
-            return _mlb_streak(player, market, line, n_games)
+            result = _mlb_streak(player, market, line, n_games)
         elif sport_up in ("NBA", "WNBA"):
-            return _nba_streak(player, market, line, n_games)
+            result = _nba_streak(player, market, line, n_games)
         elif sport_up == "NHL":
-            return _nhl_streak(player, market, line, n_games)
-        return _EMPTY
+            result = _nhl_streak(player, market, line, n_games)
+        else:
+            result = _EMPTY
+
+        # ESPN fallback: use when primary API returned no data
+        if result["hits"] is None:
+            result = _espn_streak(player, market, sport, line, n_games)
+
+        return result
     except Exception:
-        return _EMPTY
+        try:
+            return _espn_streak(player, market, sport, line, n_games)
+        except Exception:
+            return _EMPTY
 
 
 def get_streaks_for_df(df: pd.DataFrame, sport: str) -> pd.DataFrame:
