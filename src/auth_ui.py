@@ -149,41 +149,40 @@ def _oauth_buttons(suffix: str = ""):
     c1, c2 = st.columns(2)
 
     with c1:
-        # Invisible real button for click detection
         google_key = f"oauth_google_{suffix}"
         st.markdown(
-            f'<div class="oauth-btn-wrapper google-btn-wrapper" id="wrap_{google_key}">'
-            f'  <div class="oauth-btn google-btn">'
-            f'    {_GOOGLE_SVG}'
-            f'    <span>Continue with Google</span>'
-            f'  </div>'
+            f'<div class="oauth-wrap" id="wrap_{google_key}">'
+            f'  {_GOOGLE_SVG}'
+            f'  <span>Continue with Google</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
-        if st.button("Continue with Google", key=google_key, use_container_width=True):
+        if st.button("Continue with Google", key=google_key,
+                     use_container_width=True, type="secondary"):
             try:
                 url = auth.get_google_oauth_url()
-                st.markdown(f'<script>window.location.href = "{url}";</script>', unsafe_allow_html=True)
+                st.markdown(f'<script>window.location.href="{url}";</script>',
+                            unsafe_allow_html=True)
             except Exception as e:
-                st.error(f"Google login error: {e}")
+                st.error(f"Google login unavailable: {e}")
 
     with c2:
         apple_key = f"oauth_apple_{suffix}"
         st.markdown(
-            f'<div class="oauth-btn-wrapper apple-btn-wrapper" id="wrap_{apple_key}">'
-            f'  <div class="oauth-btn apple-btn">'
-            f'    {_APPLE_SVG}'
-            f'    <span>Continue with Apple</span>'
-            f'  </div>'
+            f'<div class="oauth-wrap apple-wrap" id="wrap_{apple_key}">'
+            f'  {_APPLE_SVG}'
+            f'  <span>Continue with Apple</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
-        if st.button("Continue with Apple", key=apple_key, use_container_width=True):
+        if st.button("Continue with Apple", key=apple_key,
+                     use_container_width=True, type="secondary"):
             try:
                 url = auth.get_apple_oauth_url()
-                st.markdown(f'<script>window.location.href = "{url}";</script>', unsafe_allow_html=True)
+                st.markdown(f'<script>window.location.href="{url}";</script>',
+                            unsafe_allow_html=True)
             except Exception as e:
-                st.error(f"Apple login error: {e}")
+                st.error(f"Apple login unavailable: {e}")
 
 
 def _inject_css():
@@ -238,52 +237,40 @@ def _inject_css():
     }
     .guest-link button:hover { color: #bbb !important; }
 
-    /* ── OAuth branded button overlay ── */
-    /* The styled div sits just above the real st.button */
-    .oauth-btn-wrapper {
-        position: relative;
-        margin-bottom: -2.6rem;  /* pull real button up to overlap */
-        pointer-events: none;    /* clicks fall through to the real button */
-        z-index: 1;
-    }
-    .oauth-btn {
+    /* ── OAuth label rows (icon + text shown above the real st.button) ── */
+    .oauth-wrap {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        border-radius: 8px;
-        padding: 0.55rem 0.75rem;
-        font-size: 0.88rem;
-        font-weight: 500;
-        width: 100%;
-        box-sizing: border-box;
-        cursor: pointer;
-        white-space: nowrap;
-        overflow: hidden;
-    }
-    .google-btn {
+        gap: 8px;
         background: #fff;
         color: #1f1f1f;
         border: 1px solid #dadce0;
+        border-radius: 8px 8px 0 0;
+        padding: 8px 12px 6px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        pointer-events: none;
+        margin-bottom: -1px;
+        box-sizing: border-box;
     }
-    .apple-btn {
-        background: #000;
+    .apple-wrap {
+        background: #111;
         color: #fff;
-        border: 1px solid #333;
+        border-color: #333;
     }
-
-    /* Make the real Streamlit buttons invisible — they sit on top as click targets */
-    [data-testid="stButton"]:has(button[kind="secondary"]) > button {
-        opacity: 0 !important;
-        position: relative;
-        z-index: 2;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-    }
-    /* Back button — keep it visible but style subtly */
-    button[data-testid="stBaseButton-secondary"][kind="secondary"]:not([key^="oauth_"]) {
-        opacity: 1 !important;
+    /* Stitch the real Streamlit button flush below the label row */
+    .oauth-wrap + div button,
+    .oauth-wrap + div [data-testid="stBaseButton-secondary"] {
+        border-radius: 0 0 8px 8px !important;
+        border-top: none !important;
+        margin-top: 0 !important;
+        font-size: 0 !important;        /* hide duplicate text */
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        height: 4px !important;         /* thin invisible click strip */
+        opacity: 0.01 !important;
+        min-height: unset !important;
     }
     </style>
     """, unsafe_allow_html=True)
