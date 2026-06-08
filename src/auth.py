@@ -70,13 +70,6 @@ def signup(email: str, password: str, full_name: str) -> tuple[bool, str]:
             "options": {"data": {"full_name": full_name}},
         })
         if res.user:
-            # Create profile row
-            client.table("profiles").upsert({
-                "id": res.user.id,
-                "email": email,
-                "full_name": full_name,
-                "tier": "free",
-            }).execute()
             return True, ""
         return False, "Signup failed — please try again."
     except Exception as e:
