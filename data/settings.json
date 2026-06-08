@@ -6,27 +6,19 @@
     "MLB": {
       "markets": {
         "batter_hits": true,
-        "batter_home_runs": true,
+        "batter_home_runs": false,
         "batter_total_bases": true,
         "batter_rbis": false,
         "batter_runs_scored": false,
         "batter_stolen_bases": false,
-        "batter_hits_runs_rbis": true,
+        "batter_hits_runs_rbis": false,
         "pitcher_strikeouts": true,
         "pitcher_outs_recorded": false,
         "pitcher_hits_allowed": false,
         "pitcher_walks": false
       },
       "edge": 0.0,
-      "teams": [
-        "BAL @ TOR",
-        "CWS @ PHI",
-        "KC @ MIN",
-        "LAA @ LAD",
-        "MIL @ COL",
-        "SEA @ DET",
-        "SF @ CHC"
-      ],
+      "teams": [],
       "search": "",
       "confirmed": false,
       "shop_alerts": false,
@@ -59,20 +51,17 @@
     },
     "WNBA": {
       "markets": {
-        "player_points": true,
-        "player_rebounds": true,
-        "player_assists": true,
-        "player_threes": true,
+        "player_points": false,
+        "player_rebounds": false,
+        "player_assists": false,
+        "player_threes": false,
         "player_points_rebounds_assists": false,
         "player_points_rebounds": false,
         "player_points_assists": false,
         "player_rebounds_assists": false
       },
       "edge": 0.0,
-      "teams": [
-        "CHI @ TOR",
-        "POR @ LA"
-      ],
+      "teams": [],
       "search": "",
       "confirmed": false,
       "shop_alerts": false,

@@ -1598,6 +1598,14 @@ def render_sport_tab(sport: str, use_live: bool):
                                    value=False, key=f"confirmed_{sport}",
                                    help="Show only plays where Power de-vig AND NegBin both agree on edge direction. Highest conviction plays.")
         all_teams = sorted(df["team"].dropna().unique())
+        # Guard: if session_state has stale team names from a previous day, clear them
+        _tkey_live = f"teams_{sport}"
+        if _tkey_live in st.session_state:
+            _valid = [t for t in st.session_state[_tkey_live] if t in all_teams]
+            if not _valid:
+                del st.session_state[_tkey_live]  # reset to default (all teams)
+            elif len(_valid) < len(st.session_state[_tkey_live]):
+                st.session_state[_tkey_live] = _valid  # drop stale teams
         selected_teams = st.multiselect("Matchups", options=all_teams, default=all_teams,
                                         key=f"teams_{sport}")
         player_search = st.text_input("Search Player", placeholder="e.g. Ohtani",
@@ -3126,10 +3134,21 @@ def main():
                 _ekey = f"edge_slider_{_fsport}"
                 if _ekey not in st.session_state and _fdata.get("edge") is not None:
                     st.session_state[_ekey] = float(_fdata["edge"])
-                # Restore teams multiselect
+                # Restore teams multiselect — only restore teams that exist TODAY
+                # (stale matchups from a previous day would filter out all rows)
                 _tkey = f"teams_{_fsport}"
                 if _tkey not in st.session_state and _fdata.get("teams"):
-                    st.session_state[_tkey] = _fdata["teams"]
+                    try:
+                        from scraper import scrape_props as _sp
+                        _live_df = _sp(_fsport)
+                        _live_teams = set(_live_df["team"].dropna().unique()) if not _live_df.empty else set()
+                        _valid_saved = [t for t in _fdata["teams"] if t in _live_teams]
+                        # Only restore if at least one saved team still exists today
+                        if _valid_saved:
+                            st.session_state[_tkey] = _valid_saved
+                        # else leave unset so widget defaults to all_teams
+                    except Exception:
+                        pass  # leave unset, widget will default to all teams
                 # Restore search
                 _skey = f"search_{_fsport}"
                 if _skey not in st.session_state and _fdata.get("search"):
