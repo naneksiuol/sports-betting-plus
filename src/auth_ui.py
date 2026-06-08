@@ -38,18 +38,17 @@ def _show_login():
         email = st.text_input("Email", placeholder="you@example.com")
         password = st.text_input("Password", type="password", placeholder="••••••••")
         submitted = st.form_submit_button("Log In", use_container_width=True, type="primary")
-
-    if submitted:
-        if not email or not password:
-            st.error("Please fill in all fields.")
-        else:
-            with st.spinner("Logging in..."):
-                ok, err = auth.login(email, password)
-            if ok:
-                st.success("Welcome back!")
-                st.rerun()
+        if submitted:
+            if not email or not password:
+                st.error("Please fill in all fields.")
             else:
-                st.error(err)
+                with st.spinner("Logging in..."):
+                    ok, err = auth.login(email, password)
+                if ok:
+                    st.success("Welcome back!")
+                    st.rerun()
+                else:
+                    st.error(err)
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Don't have an account? **Sign up free →**", use_container_width=True):
@@ -75,23 +74,22 @@ def _show_signup():
                                  help="At least 8 characters")
         confirm = st.text_input("Confirm Password", type="password", placeholder="••••••••")
         submitted = st.form_submit_button("Create Free Account", use_container_width=True, type="primary")
-
-    if submitted:
-        if not all([name, email, password, confirm]):
-            st.error("Please fill in all fields.")
-        elif len(password) < 8:
-            st.error("Password must be at least 8 characters.")
-        elif password != confirm:
-            st.error("Passwords don't match.")
-        else:
-            with st.spinner("Creating account..."):
-                ok, err = auth.signup(email, password, name)
-            if ok:
-                st.success("✅ Account created! Check your email to confirm, then log in.")
-                st.session_state["auth_mode"] = "login"
-                st.rerun()
+        if submitted:
+            if not all([name, email, password, confirm]):
+                st.error("Please fill in all fields.")
+            elif len(password) < 8:
+                st.error("Password must be at least 8 characters.")
+            elif password != confirm:
+                st.error("Passwords don't match.")
             else:
-                st.error(err)
+                with st.spinner("Creating account..."):
+                    ok, err = auth.signup(email, password, name)
+                if ok:
+                    st.success("✅ Account created! Check your email to confirm, then log in.")
+                    st.session_state["auth_mode"] = "login"
+                    st.rerun()
+                else:
+                    st.error(err)
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Already have an account? **Log in →**", use_container_width=True):
