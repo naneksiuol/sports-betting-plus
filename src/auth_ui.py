@@ -140,7 +140,7 @@ def _inject_css():
     """, unsafe_allow_html=True)
 
 
-def show_upgrade_modal(required_tier: str = "standard"):
+def show_upgrade_modal(required_tier: str = "standard", key: str = ""):
     """Show an upgrade prompt when a gated feature is accessed."""
     from tiers import TIERS
     import stripe_payments
@@ -155,8 +155,9 @@ def show_upgrade_modal(required_tier: str = "standard"):
     """, unsafe_allow_html=True)
 
     user = auth.get_user()
+    btn_key = f"upgrade_{required_tier}_{key}" if key else f"upgrade_{required_tier}"
     if user and st.button(f"Upgrade to {cfg['label']} — ${cfg['price_monthly']}/mo",
-                          type="primary", use_container_width=True):
+                          type="primary", use_container_width=True, key=btn_key):
         url = stripe_payments.create_checkout_session(
             user["id"], user["email"], required_tier
         )
