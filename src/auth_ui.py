@@ -174,8 +174,13 @@ def show_user_menu():
     tier = user.get("tier", "free")
     with st.sidebar:
         st.markdown("---")
-        st.markdown(f"👤 **{user['name']}**")
+        admin_badge = " 👑" if user.get("is_admin") else ""
+        st.markdown(f"👤 **{user['name']}**{admin_badge}")
         st.markdown(f"{t.tier_badge(tier)}")
+        if user.get("is_admin"):
+            if st.button("🛠️ Admin Panel", use_container_width=True, key="sidebar_admin"):
+                st.session_state["show_admin"] = not st.session_state.get("show_admin", False)
+                st.rerun()
         if tier != "premium":
             next_tier = "standard" if tier == "free" else "premium"
             cfg = t.TIERS[next_tier]

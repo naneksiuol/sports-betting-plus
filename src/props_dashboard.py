@@ -74,6 +74,13 @@ if _SUPABASE_CONFIGURED:
 
     # User is logged in — show user menu in sidebar
     auth_ui.show_user_menu()
+
+    # Admin panel (full-page overlay for admin users)
+    if auth.is_admin() and st.session_state.get("show_admin", False):
+        from admin_panel import show_admin_panel
+        show_admin_panel()
+        st.stop()
+
     _current_tier = auth.get_tier()
 else:
     # Supabase not configured yet — run in open mode (local dev)
