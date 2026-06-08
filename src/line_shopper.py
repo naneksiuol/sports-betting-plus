@@ -19,8 +19,9 @@ SHOP_THRESHOLD = 5
 
 # Human-readable labels for the book columns the scraper exposes
 BOOK_COLS: dict[str, str] = {
-    "fd_odds": "FanDuel",
-    "dk_odds": "DraftKings",
+    "fd_odds":   "FanDuel",
+    "dk_odds":   "DraftKings",
+    "espn_odds": "ESPN BET",
 }
 
 

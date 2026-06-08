@@ -269,7 +269,20 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
 
         pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
         if not pstats:
-            skipped.append(f"{bet['player']} — not found in boxscores")
+            # ESPN fallback
+            try:
+                from espn_service import grade_from_espn
+                result = grade_from_espn(bet["player"], market_key, line, "MLB", date_str)
+                if result:
+                    if not dry_run:
+                        update_result(bet["id"], result)
+                    emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+                    print(f"  {emoji} [MLB/ESPN] {bet['player']} | O{line} → {result.upper()}")
+                    graded += 1
+                    continue
+            except Exception:
+                pass
+            skipped.append(f"{bet['player']} — not found in boxscores or ESPN")
             continue
 
         stat_group, stat_field = stat_cfg
@@ -375,7 +388,20 @@ def _grade_nba(bets: list[dict], date_str: str, league_id: str, label: str, dry_
 
         pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
         if not pstats:
-            skipped.append(f"{bet['player']} — not found in box scores")
+            # ESPN fallback
+            try:
+                from espn_service import grade_from_espn
+                result = grade_from_espn(bet["player"], market_key, line, label, date_str)
+                if result:
+                    if not dry_run:
+                        update_result(bet["id"], result)
+                    emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+                    print(f"  {emoji} [{label}/ESPN] {bet['player']} | O{line} → {result.upper()}")
+                    graded += 1
+                    continue
+            except Exception:
+                pass
+            skipped.append(f"{bet['player']} — not found in box scores or ESPN")
             continue
 
         if callable(stat_cfg):
@@ -470,7 +496,20 @@ def _grade_nhl(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
 
         pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
         if not pstats:
-            skipped.append(f"{bet['player']} — not found in box scores")
+            # ESPN fallback
+            try:
+                from espn_service import grade_from_espn
+                result = grade_from_espn(bet["player"], market_key, line, "NHL", date_str)
+                if result:
+                    if not dry_run:
+                        update_result(bet["id"], result)
+                    emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+                    print(f"  {emoji} [NHL/ESPN] {bet['player']} | O{line} → {result.upper()}")
+                    graded += 1
+                    continue
+            except Exception:
+                pass
+            skipped.append(f"{bet['player']} — not found in box scores or ESPN")
             continue
 
         if callable(stat_cfg):

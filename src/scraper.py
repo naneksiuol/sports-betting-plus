@@ -13,9 +13,11 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 # Consensus (15) — market consensus line, posts BOTH sides on every prop: best fair-prob calibrator
 # Open (30)      — opening/sharp line, also posts both sides: second-best calibrator
 # BetMGM NJ (75), Caesars NV (49), BetRivers NJ (71) — extra books for depth
-BOOK_IDS = "69,68,15,30,75,49,71"
+# ESPN BET (45)  — additional bet target for line shopping
+BOOK_IDS = "69,68,15,30,75,49,71,45"
 FD_ID          = "69"
 DK_ID          = "68"
+ESPN_ID        = "45"
 CONSENSUS_ID   = "15"   # market consensus — posts both over + under, most accurate
 OPEN_ID        = "30"   # opening/sharp line — also both sides
 SHARP_IDS      = {"15", "30"}  # these always have both sides → priority for Shin de-vig
@@ -269,6 +271,7 @@ def scrape_props(sport: str) -> pd.DataFrame:
                 line_val = 0.5
                 fd_over: float | None = None
                 dk_over: float | None = None
+                espn_over: float | None = None         # book 45 — ESPN BET
                 consensus_over: float | None = None   # book 15 — market consensus
                 consensus_under: float | None = None
                 open_over: float | None = None        # book 30 — opening/sharp line
@@ -316,6 +319,8 @@ def scrape_props(sport: str) -> pd.DataFrame:
                                 fd_over = float(odds)
                             elif str(book_id) == DK_ID and dk_over is None:
                                 dk_over = float(odds)
+                            elif str(book_id) == ESPN_ID and espn_over is None:
+                                espn_over = float(odds)
                             elif str(book_id) == CONSENSUS_ID and consensus_over is None:
                                 consensus_over = float(odds)
                             elif str(book_id) == OPEN_ID and open_over is None:
@@ -332,8 +337,8 @@ def scrape_props(sport: str) -> pd.DataFrame:
                 if fd_over is None and dk_over is None:
                     continue
 
-                # Use best FD/DK odds for the bettor
-                fd_dk_odds = [o for o in [fd_over, dk_over] if o is not None]
+                # Use best FD/DK/ESPN odds for the bettor
+                fd_dk_odds = [o for o in [fd_over, dk_over, espn_over] if o is not None]
                 best_over_odds = max(fd_dk_odds)
                 best_over_implied = _imp(best_over_odds)
 
@@ -343,6 +348,8 @@ def scrape_props(sport: str) -> pd.DataFrame:
                     books_available.append("FD")
                 if dk_over is not None:
                     books_available.append("DK")
+                if espn_over is not None:
+                    books_available.append("ESPN")
                 book_tag = "/".join(books_available)
 
                 # Fair probability — Power de-vig (primary) with three-tier fallback:
@@ -409,6 +416,7 @@ def scrape_props(sport: str) -> pd.DataFrame:
                     "books":            book_tag,
                     "fd_odds":          round(fd_over) if fd_over is not None else None,
                     "dk_odds":          round(dk_over) if dk_over is not None else None,
+                    "espn_odds":        round(espn_over) if espn_over is not None else None,
                 })
 
     if not rows:
@@ -420,5 +428,5 @@ def scrape_props(sport: str) -> pd.DataFrame:
     cols = ["player", "team", "market", "line", "over_odds",
             "book_implied", "fair_est", "fair_est_shin", "fair_est_negbin",
             "edge", "edge_negbin", "edge_confirmed",
-            "negbin_delta", "n_books", "books", "fd_odds", "dk_odds"]
+            "negbin_delta", "n_books", "books", "fd_odds", "dk_odds", "espn_odds"]
     return df[[c for c in cols if c in df.columns]]
