@@ -85,7 +85,7 @@ def _show_signup():
                 with st.spinner("Creating account..."):
                     ok, err = auth.signup(email, password, name)
                 if ok:
-                    st.success("✅ Account created! Check your email to confirm, then log in.")
+                    st.success("✅ Account created! You can now log in.")
                     st.session_state["auth_mode"] = "login"
                     st.rerun()
                 else:
