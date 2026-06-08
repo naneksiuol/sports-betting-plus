@@ -179,11 +179,11 @@ def show_user_menu():
         if tier != "premium":
             next_tier = "standard" if tier == "free" else "premium"
             cfg = t.TIERS[next_tier]
-            if st.button(f"⬆️ Upgrade to {cfg['label']}", use_container_width=True):
+            if st.button(f"⬆️ Upgrade to {cfg['label']}", use_container_width=True, key="sidebar_upgrade"):
                 import stripe_payments
                 url = stripe_payments.create_checkout_session(user["id"], user["email"], next_tier)
                 if url:
                     st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-        if st.button("Log Out", use_container_width=True):
+        if st.button("Log Out", use_container_width=True, key="sidebar_logout"):
             auth.logout()
             st.rerun()
