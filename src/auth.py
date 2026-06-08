@@ -34,6 +34,11 @@ def is_authenticated() -> bool:
     return get_user() is not None
 
 
+def is_admin() -> bool:
+    user = get_user()
+    return bool(user and user.get("is_admin", False))
+
+
 def login(email: str, password: str) -> tuple[bool, str]:
     """Returns (success, error_message)."""
     try:
@@ -47,6 +52,7 @@ def login(email: str, password: str) -> tuple[bool, str]:
                 "email": user.email,
                 "tier": profile.get("tier", "free"),
                 "name": profile.get("full_name", email.split("@")[0]),
+                "is_admin": profile.get("is_admin", False),
             }
             st.session_state["access_token"] = res.session.access_token
             return True, ""
@@ -137,6 +143,7 @@ def handle_oauth_callback():
                     "email": user.email,
                     "tier": profile.get("tier", "free"),
                     "name": profile.get("full_name", user.email.split("@")[0]),
+                    "is_admin": profile.get("is_admin", False),
                 }
                 st.session_state["access_token"] = access_token
                 # Clear tokens from URL
