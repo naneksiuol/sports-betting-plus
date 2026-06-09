@@ -333,7 +333,28 @@ def _get_espn_basketball_stats(date_str: str, league: str) -> dict:
             timeout=20,
         )
         sb.raise_for_status()
-        events = sb.json().get("events", [])
+        sb_data = sb.json()
+        events = sb_data.get("events", [])
+        print(f"  ⚡ ESPN {league} scoreboard for {date_str}: {len(events)} events found")
+        # If scoreboard is empty, try the core API (playoff games sometimes missing from site API)
+        if not events:
+            core_r = requests.get(
+                f"https://sports.core.api.espn.com/v2/sports/basketball/leagues/{league}/events",
+                params={"dates": date_compact, "limit": 10},
+                timeout=20,
+            )
+            if core_r.ok:
+                items = core_r.json().get("items", [])
+                print(f"  ⚡ ESPN core API: {len(items)} event refs found")
+                for item in items:
+                    ref = item.get("$ref", "")
+                    if ref:
+                        try:
+                            ev_r = requests.get(ref, timeout=15)
+                            if ev_r.ok:
+                                events.append(ev_r.json())
+                        except Exception:
+                            pass
         for event in events:
             status_type = event.get("status", {}).get("type", {})
             state = status_type.get("state", "")
