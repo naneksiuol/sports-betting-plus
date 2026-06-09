@@ -49,15 +49,10 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 def _share_btn(text: str, uid: str, width: str = "auto") -> None:
     """
-    Share button — clicking toggles a st.code block with a built-in copy button.
-    Uses Streamlit's native copy button (iframe-safe; no navigator.clipboard needed).
+    Share slip — expander with st.code so Streamlit's native copy button works.
+    No JS, no rerun, works inside columns and expanders.
     """
-    key = f"_share_open_{uid}"
-    label = "✅ Hide" if st.session_state.get(key) else "📤 Share"
-    if st.button(label, key=f"_share_btn_{uid}", use_container_width=(width == "100%")):
-        st.session_state[key] = not st.session_state.get(key, False)
-        st.rerun()
-    if st.session_state.get(key):
+    with st.expander("📤 Share", expanded=False):
         st.code(text, language=None)
 
 st.set_page_config(
