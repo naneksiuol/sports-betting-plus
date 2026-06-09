@@ -380,10 +380,15 @@ def build_sgps(df: pd.DataFrame, min_odds: int = -300,
         from edge_model import sgp_correlation_tax
         corr_tax = sgp_correlation_tax(selected, payout["combined_decimal"])
 
+        win_prob = 1.0
+        for _leg in selected:
+            win_prob *= min(max(float(_leg.get("fair_est", 0.5)), 0.001), 0.999)
+
         sgp_candidates.append({
             "game":                 game,
             "legs":                 selected,
             "payout":               payout,
+            "win_prob":             round(win_prob, 4),
             "combined_ev":          round(combined_ev, 4),
             "independence_penalty": round(ind_penalty, 3),
             "correlation_tax":      corr_tax,
@@ -461,10 +466,15 @@ def build_diverse_sgps(
                 payout       = parlay_payout(odds_list)
                 corr_tax     = sgp_correlation_tax(selected, payout["combined_decimal"])
 
+                win_prob_d = 1.0
+                for _leg in selected:
+                    win_prob_d *= min(max(float(_leg.get("fair_est", 0.5)), 0.001), 0.999)
+
                 candidates.append({
                     "game":                 game,
                     "legs":                 selected,
                     "payout":               payout,
+                    "win_prob":             round(win_prob_d, 4),
                     "combined_ev":          round(combined_ev, 4),
                     "independence_penalty": round(ind_penalty, 3),
                     "correlation_tax":      corr_tax,
