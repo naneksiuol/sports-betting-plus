@@ -286,9 +286,14 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
             continue
 
         stat_group, stat_field = stat_cfg
-        val = pstats.get(stat_group, {}).get(stat_field)
+        player_stats_group = pstats.get(stat_group, {})
+        val = player_stats_group.get(stat_field)
         if val is None:
-            skipped.append(f"{bet['player']} — stat {stat_group}.{stat_field} not found")
+            # Player found but no stats for this market = DNP/no AB → void
+            if not dry_run:
+                update_result(bet["id"], "void")
+            print(f"  ↩️  [MLB] {bet['player']} — DNP/no stats → VOID")
+            graded += 1
             continue
 
         result = _grade_bet(float(val), float(line))
@@ -305,62 +310,103 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
 
 def _get_nba_player_stats(date_str: str, league: str = "00") -> dict:
     """
-    Fetch player stats for all final NBA/WNBA games on date_str.
-    league: '00' = NBA, '10' = WNBA
+    Fetch player stats via balldontlie API (no key needed, no IP blocks).
+    league: '00' = NBA, '10' = WNBA (balldontlie covers NBA only; WNBA falls back to ESPN)
     Returns dict: normalized_name → stat dict (pts, reb, ast, fg3m, stl, blk, tov)
     """
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
-    date_fmt = dt.strftime("%m/%d/%Y")
-
-    scoreboard = requests.get(
-        "https://stats.nba.com/stats/scoreboardv2",
-        params={"DayOffset": "0", "GameDate": date_fmt, "LeagueID": league},
-        headers=NBA_HEADERS, timeout=15,
-    )
-    scoreboard.raise_for_status()
-    sb_data = scoreboard.json()
-
-    game_ids = []
-    for rs in sb_data.get("resultSets", []):
-        if rs["name"] == "GameHeader":
-            headers = rs["headers"]
-            gid_idx = headers.index("GAME_ID")
-            status_idx = headers.index("GAME_STATUS_ID")
-            for row in rs["rowSet"]:
-                if row[status_idx] == 3:  # 3 = Final
-                    game_ids.append(row[gid_idx])
+    if league != "00":
+        return _get_wnba_player_stats_espn(date_str)
 
     all_stats: dict = {}
-    for gid in game_ids:
-        try:
-            box = requests.get(
-                "https://stats.nba.com/stats/boxscoretraditionalv2",
-                params={"GameID": gid, "StartPeriod": 0, "EndPeriod": 10,
-                        "RangeType": 0, "StartRange": 0, "EndRange": 0},
-                headers=NBA_HEADERS, timeout=15,
-            )
-            box.raise_for_status()
-            for rs in box.json().get("resultSets", []):
-                if rs["name"] != "PlayerStats":
-                    continue
-                h = rs["headers"]
-                for row in rs["rowSet"]:
-                    name = row[h.index("PLAYER_NAME")]
+    try:
+        # Get games for the date
+        r = requests.get(
+            "https://api.balldontlie.io/v1/games",
+            params={"dates[]": date_str, "per_page": 30},
+            timeout=20,
+        )
+        r.raise_for_status()
+        games = r.json().get("data", [])
+        final_ids = [g["id"] for g in games if g.get("status") == "Final"]
+
+        for gid in final_ids:
+            try:
+                stats_r = requests.get(
+                    "https://api.balldontlie.io/v1/stats",
+                    params={"game_ids[]": gid, "per_page": 100},
+                    timeout=20,
+                )
+                stats_r.raise_for_status()
+                for rec in stats_r.json().get("data", []):
+                    p = rec.get("player", {})
+                    name = f"{p.get('first_name','')} {p.get('last_name','')}".strip()
                     if not name:
                         continue
-                    stat = {
-                        "pts":  row[h.index("PTS")]  or 0,
-                        "reb":  row[h.index("REB")]  or 0,
-                        "ast":  row[h.index("AST")]  or 0,
-                        "fg3m": row[h.index("FG3M")] or 0,
-                        "stl":  row[h.index("STL")]  or 0,
-                        "blk":  row[h.index("BLK")]  or 0,
-                        "tov":  row[h.index("TO")]   or 0,
+                    all_stats[_normalize(name)] = {
+                        "pts":  rec.get("pts") or 0,
+                        "reb":  rec.get("reb") or 0,
+                        "ast":  rec.get("ast") or 0,
+                        "fg3m": rec.get("fg3m") or 0,
+                        "stl":  rec.get("stl") or 0,
+                        "blk":  rec.get("blk") or 0,
+                        "tov":  rec.get("turnover") or 0,
                     }
-                    all_stats[_normalize(name)] = stat
-        except Exception as e:
-            print(f"  ⚠️  NBA box {gid}: {e}")
+            except Exception as e:
+                print(f"  ⚠️  balldontlie game {gid}: {e}")
+    except Exception as e:
+        raise RuntimeError(f"balldontlie NBA fetch failed: {e}")
 
+    return all_stats
+
+
+def _get_wnba_player_stats_espn(date_str: str) -> dict:
+    """Fetch WNBA box scores from ESPN public API."""
+    all_stats: dict = {}
+    try:
+        date_compact = date_str.replace("-", "")
+        r = requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard",
+            params={"dates": date_compact},
+            timeout=20,
+        )
+        r.raise_for_status()
+        events = r.json().get("events", [])
+        for event in events:
+            for comp in event.get("competitions", []):
+                if comp.get("status", {}).get("type", {}).get("completed") is not True:
+                    continue
+                event_id = event["id"]
+                try:
+                    box_r = requests.get(
+                        f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/{event_id}/boxscore",
+                        timeout=20,
+                    )
+                    box_r.raise_for_status()
+                    for team in box_r.json().get("players", []):
+                        for stat_entry in team.get("statistics", []):
+                            keys = stat_entry.get("keys", [])
+                            for athlete in stat_entry.get("athletes", []):
+                                name = athlete.get("athlete", {}).get("displayName", "")
+                                vals = athlete.get("stats", [])
+                                if not name or not vals:
+                                    continue
+                                stat_map = dict(zip(keys, vals))
+                                try:
+                                    all_stats[_normalize(name)] = {
+                                        "pts":  float(stat_map.get("PTS", 0) or 0),
+                                        "reb":  float(stat_map.get("REB", 0) or 0),
+                                        "ast":  float(stat_map.get("AST", 0) or 0),
+                                        "fg3m": float(stat_map.get("3PM", 0) or 0),
+                                        "stl":  float(stat_map.get("STL", 0) or 0),
+                                        "blk":  float(stat_map.get("BLK", 0) or 0),
+                                        "tov":  float(stat_map.get("TO", 0) or 0),
+                                    }
+                                except Exception:
+                                    pass
+                except Exception as e:
+                    print(f"  ⚠️  WNBA ESPN box {event_id}: {e}")
+    except Exception as e:
+        raise RuntimeError(f"ESPN WNBA fetch failed: {e}")
     return all_stats
 
 
@@ -410,7 +456,12 @@ def _grade_nba(bets: list[dict], date_str: str, league_id: str, label: str, dry_
             val = pstats.get(stat_cfg)
 
         if val is None:
-            skipped.append(f"{bet['player']} — stat {stat_cfg} not found")
+            # Player found but DNP → void
+            if not dry_run:
+                update_result(bet["id"], "void")
+            print(f"  ↩️  [NBA/WNBA] {bet['player']} — DNP/no stats → VOID")
+            graded += 1
+            continue
             continue
 
         result = _grade_bet(float(val), float(line))
@@ -513,7 +564,11 @@ def _grade_nhl(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
             continue
 
         if callable(stat_cfg):
-            val = stat_cfg(pstats)
+            if not dry_run:
+                update_result(bet["id"], "void")
+            print(f"  ↩️  [NHL] {bet['player']} — DNP/no stats → VOID")
+            graded += 1
+            continue
         else:
             val = pstats.get(stat_cfg)
 
