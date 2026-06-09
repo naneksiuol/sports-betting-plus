@@ -64,8 +64,8 @@ MARKET_GROUPS = {
 
 FEATURE_NAMES = [
     "logit_implied", "logit_fair", "edge",
-    "line", "odds_move_delta", "open_implied",
-    "market_group", "odds_bucket", "clv_at_placement", "is_dog",
+    "line_norm", "odds_move_delta", "open_implied",
+    "market_group", "odds_bucket", "is_dog", "edge_sq",
 ]
 
 
@@ -93,6 +93,18 @@ def _snap_key(player: str, market: str, line: float) -> str:
     return f"{player.lower().strip()}|{market}|{line}"
 
 
+def _get_snap_record(player: str, market: str, line: float, snaps: dict) -> dict | None:
+    """Return the most recent snapshot record for a player/market/line."""
+    key = _snap_key(player, market, line)
+    best = None
+    for day in sorted(snaps.keys(), reverse=True):
+        rec = snaps[day].get(key)
+        if rec:
+            best = rec
+            break
+    return best
+
+
 def _get_opening_odds(player: str, market: str, line: float, snaps: dict) -> float | None:
     """Return the earliest recorded odds for a player/market/line."""
     key = _snap_key(player, market, line)
@@ -118,20 +130,39 @@ def _extract_features(bet: dict, snaps: dict) -> list[float] | None:
 
         market = prop.split(" ")[0] if prop else ""
 
-        implied    = _american_to_implied(odds)
-        fair       = float(fair_est) if fair_est else implied
+        implied   = _american_to_implied(odds)
+        logit_imp = _logit(implied)
+
+        # Try snapshot record for edge + line movement
+        snap_rec  = _get_snap_record(player, market, line, snaps)
+        snap_edge = float(snap_rec["edge"]) if snap_rec and snap_rec.get("edge") is not None else None
+
+        # Fair probability: prefer explicit fair_est, then snapshot edge, then multiplicative devig
+        if fair_est is not None:
+            fair = float(fair_est)
+        elif snap_edge is not None:
+            fair = min(max(implied + snap_edge, 0.001), 0.999)
+        else:
+            # Single-side devig: assume standard -110 juice on other side
+            other_imp = _american_to_implied(-110)
+            total = implied + other_imp
+            fair = implied / total if total > 0 else implied
+
         edge       = fair - implied
-        logit_imp  = _logit(implied)
         logit_fair = _logit(fair)
 
-        # Opening odds from snapshot (line movement signal)
-        open_odds = _get_opening_odds(player, market, line, snaps)
-        if open_odds and open_odds != 0:
-            open_imp    = _american_to_implied(open_odds)
-            move_delta  = implied - open_imp   # positive = line moved toward under
+        # Line movement: opening vs current
+        open_odds = float(snap_rec.get("opening") or snap_rec.get("odds") or 0) if snap_rec else None
+        if open_odds and open_odds != 0 and open_odds != odds:
+            open_imp   = _american_to_implied(open_odds)
+            move_delta = implied - open_imp
         else:
+            open_odds  = odds
             open_imp   = implied
             move_delta = 0.0
+
+        # Line normalised per market type (e.g. K line 5.5 vs hits line 0.5)
+        line_norm = line / max(abs(line), 1.0)
 
         mgroup = float(MARKET_GROUPS.get(market, 6))
 
@@ -142,12 +173,12 @@ def _extract_features(bet: dict, snaps: dict) -> list[float] | None:
         elif odds <= 150:  odds_bucket = 4.0
         else:              odds_bucket = 5.0
 
-        clv_feat = float(clv_raw) if clv_raw is not None else 0.0
-        is_dog   = 1.0 if odds > 0 else 0.0
+        is_dog  = 1.0 if odds > 0 else 0.0
+        edge_sq = edge ** 2  # non-linear edge signal
 
         return [logit_imp, logit_fair, edge,
-                line, move_delta, open_imp,
-                mgroup, odds_bucket, clv_feat, is_dog]
+                line_norm, move_delta, open_imp,
+                mgroup, odds_bucket, is_dog, edge_sq]
     except Exception:
         return None
 
@@ -207,19 +238,21 @@ def train_models(force: bool = False) -> dict:
         X = np.array(X_rows, dtype=np.float64)
         y = np.array(y_rows, dtype=np.float64)
 
-        # LightGBM params — conservative for small datasets
+        # LightGBM params — heavily regularised for small datasets (<300 samples)
         params = {
-            "objective":       "binary",
-            "metric":          "auc",
-            "n_estimators":    200,
-            "learning_rate":   0.05,
-            "num_leaves":      15,
-            "min_child_samples": max(5, n // 10),
-            "feature_fraction":  0.8,
-            "bagging_fraction":  0.8,
-            "bagging_freq":      5,
-            "reg_alpha":         0.1,
-            "reg_lambda":        0.1,
+            "objective":         "binary",
+            "metric":            "auc",
+            "n_estimators":      100,
+            "learning_rate":     0.03,
+            "num_leaves":        8,
+            "max_depth":         3,
+            "min_child_samples": max(10, n // 8),
+            "feature_fraction":  0.7,
+            "bagging_fraction":  0.7,
+            "bagging_freq":      3,
+            "reg_alpha":         1.0,
+            "reg_lambda":        2.0,
+            "min_split_gain":    0.01,
             "verbose":           -1,
             "random_state":      42,
         }
@@ -319,7 +352,7 @@ def predict_win_prob(
             # Build feature vector using a proxy bet dict
             proxy = {
                 "odds": odds, "line": line,
-                "prop": market, "fair_est": fair,
+                "prop": market, "fair_est": fair_est,
                 "player": player, "opening_clv": clv_at_placement,
             }
             feats = _extract_features(proxy, snaps)
