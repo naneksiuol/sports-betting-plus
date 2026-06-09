@@ -48,22 +48,17 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 
 def _share_btn(text: str, uid: str, width: str = "auto") -> None:
-    """Render a clipboard share button that avoids JS quoting issues."""
-    import html as _html
-    safe = _html.escape(text, quote=False)
-    st.markdown(
-        f'<div id="sbwrap_{uid}" style="display:inline-block;width:{width}">'
-        f'  <span id="sbt_{uid}" style="display:none">{safe}</span>'
-        f'  <button onclick="'
-        f'    navigator.clipboard.writeText(document.getElementById(\'sbt_{uid}\').textContent)'
-        f'    .then(function(){{this.textContent=\'✅ Copied!\'}}.bind(this))'
-        f'    .catch(function(){{this.textContent=\'❌ Failed\'}}.bind(this))"'
-        f'  style="width:100%;background:#1e293b;border:1px solid #4f46e5;color:#a78bfa;'
-        f'border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;">'
-        f'📤 Share</button>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    """
+    Share button — clicking toggles a st.code block with a built-in copy button.
+    Uses Streamlit's native copy button (iframe-safe; no navigator.clipboard needed).
+    """
+    key = f"_share_open_{uid}"
+    label = "✅ Hide" if st.session_state.get(key) else "📤 Share"
+    if st.button(label, key=f"_share_btn_{uid}", use_container_width=(width == "100%")):
+        st.session_state[key] = not st.session_state.get(key, False)
+        st.rerun()
+    if st.session_state.get(key):
+        st.code(text, language=None)
 
 st.set_page_config(
     page_title="Sports Betting Plus Bot",
