@@ -1,37 +1,38 @@
 {
   "status": "ok",
-  "n_samples": 115,
-  "n_wins": 61,
-  "win_rate": 0.5304,
-  "brier_score": 0.1055,
-  "train_auc": 0.9406,
-  "cv_auc": 0.8217,
-  "accuracy": 0.8609,
+  "sport": null,
+  "n_samples": 660,
+  "n_wins": 394,
+  "win_rate": 0.597,
+  "brier_score": 0.1215,
+  "train_auc": 0.898,
+  "cv_auc": 0.8523,
+  "accuracy": 0.8348,
   "importances": {
-    "implied_prob": 616,
-    "opening_implied": 138,
+    "implied_prob": 399,
+    "opening_implied": 320,
     "odds_movement": 0,
     "edge_open": 0,
     "edge_current": 0,
-    "line_norm": 94,
+    "line_norm": 40,
     "market_bucket": 0,
     "sport_code": 0,
-    "is_underdog": 11,
-    "juice_norm": 402
+    "is_underdog": 24,
+    "juice_norm": 444
   },
   "params": {
     "objective": "binary",
     "metric": "binary_logloss",
     "n_estimators": 200,
     "learning_rate": 0.05,
-    "num_leaves": 14,
+    "num_leaves": 15,
     "max_depth": 4,
-    "min_child_samples": 7,
+    "min_child_samples": 44,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "reg_alpha": 0.5,
     "reg_lambda": 1.0
   },
   "quality": "Strong",
-  "msg": "LightGBM trained on 115 bets | AUC=0.941 | Brier=0.105"
+  "msg": "LightGBM trained on 660 bets | AUC=0.898 | Brier=0.121"
 }
