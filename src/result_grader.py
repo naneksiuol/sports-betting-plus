@@ -335,12 +335,13 @@ def _get_espn_basketball_stats(date_str: str, league: str) -> dict:
         sb.raise_for_status()
         events = sb.json().get("events", [])
         for event in events:
-            status = event.get("status", {}).get("type", {})
-            state = event.get("status", {}).get("type", {}).get("state", "")
-            # Accept completed flag OR state=="post" (game finished but ESPN may not set completed=True)
-            if not status.get("completed") and state != "post":
+            status_type = event.get("status", {}).get("type", {})
+            state = status_type.get("state", "")
+            # Skip only explicitly pre-game events; accept post, in, completed, or unknown
+            if state == "pre":
                 continue
             event_id = event["id"]
+            print(f"  ⚡ ESPN {league} event {event_id} state={state!r} completed={status_type.get('completed')}")
             try:
                 box_r = requests.get(
                     f"https://site.api.espn.com/apis/site/v2/sports/basketball/{league}/summary",
