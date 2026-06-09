@@ -23,6 +23,7 @@ except Exception:
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+import json
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -650,6 +651,24 @@ def render_bet_tracker():
                     if st.button("🗑️ Delete", key=f"del_{bet['id']}"):
                         delete_bet(bet["id"])
                         st.rerun()
+
+                    # Share button — copies a text slip to clipboard
+                    odds_fmt = f"+{bet['odds']}" if bet['odds'] > 0 else str(bet['odds'])
+                    share_text = (
+                        f"🎯 {bet['sport']} | {bet['player']}\n"
+                        f"📊 {bet['prop']} @ {odds_fmt}\n"
+                        f"💰 Stake: ${bet['stake']:.2f}  |  {badge}\n"
+                        f"📅 {bet['date']}\n"
+                        f"— via Sports Betting Plus"
+                    )
+                    st.markdown(
+                        f'<button onclick="navigator.clipboard.writeText({json.dumps(share_text)})'
+                        f'.then(()=>this.textContent=\'✅ Copied!\').catch(()=>this.textContent=\'❌ Failed\')"'
+                        f' style="background:#1e293b;border:1px solid #334155;color:#94a3b8;'
+                        f'border-radius:8px;padding:4px 14px;font-size:12px;cursor:pointer;'
+                        f'margin-top:6px;">📤 Share</button>',
+                        unsafe_allow_html=True,
+                    )
 
     st.divider()
 
@@ -2520,27 +2539,53 @@ def render_sport_tab(sport: str, use_live: bool):
 
 </div>""", unsafe_allow_html=True)
 
-            if st.button(f"Log {n}-Leg Parlay to Tracker",
-                         key=f"log_parlay_{sport}_{n}", use_container_width=True):
-                from bet_tracker import add_bet
-                for leg in p["legs"]:
-                    prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
-                    mkt  = leg.get("market", "")
-                    sk   = (leg["player"].lower(), mkt, float(leg.get("line", 0.5)))
-                    sl   = sharp_map.get(sk, {})
-                    add_bet(
-                        sport=sport,
-                        player=leg["player"],
-                        prop=f"{prop} O{leg.get('line','')} [{n}-leg parlay]",
-                        line=leg.get("line", 0.5),
-                        odds=int(leg["over_odds"]),
-                        stake=round(stake / n, 2),
-                        book="",
-                        notes=f"Auto-logged from {n}-leg parlay | {amer_fmt} combined",
-                        sharp_odds=sl.get("consensus_odds"),
-                        fair_est=leg.get("fair_est"),
-                    )
-                st.success(f"{n} legs logged to Tracker!")
+            btn_col1, btn_col2 = st.columns([3, 1])
+            with btn_col1:
+                if st.button(f"Log {n}-Leg Parlay to Tracker",
+                             key=f"log_parlay_{sport}_{n}", use_container_width=True):
+                    from bet_tracker import add_bet
+                    for leg in p["legs"]:
+                        prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                        mkt  = leg.get("market", "")
+                        sk   = (leg["player"].lower(), mkt, float(leg.get("line", 0.5)))
+                        sl   = sharp_map.get(sk, {})
+                        add_bet(
+                            sport=sport,
+                            player=leg["player"],
+                            prop=f"{prop} O{leg.get('line','')} [{n}-leg parlay]",
+                            line=leg.get("line", 0.5),
+                            odds=int(leg["over_odds"]),
+                            stake=round(stake / n, 2),
+                            book="",
+                            notes=f"Auto-logged from {n}-leg parlay | {amer_fmt} combined",
+                            sharp_odds=sl.get("consensus_odds"),
+                            fair_est=leg.get("fair_est"),
+                        )
+                    st.success(f"{n} legs logged to Tracker!")
+            with btn_col2:
+                # Build share text for this parlay
+                _parlay_lines = "\n".join(
+                    f"  {j}. {leg['player']} — "
+                    f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
+                    f"O{leg.get('line','')} "
+                    f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
+                    for j, leg in enumerate(p["legs"], 1)
+                )
+                _share_parlay = (
+                    f"🎰 {n}-Leg Parlay | {sport}\n"
+                    f"{_parlay_lines}\n"
+                    f"📈 Combined: {amer_fmt}  |  Win prob: {win_prob:.1%}  |  EV: {ev_sign}{ev_pct:.1f}%\n"
+                    f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
+                    f"— via Sports Betting Plus"
+                )
+                st.markdown(
+                    f'<button onclick="navigator.clipboard.writeText({json.dumps(_share_parlay)})'
+                    f'.then(()=>this.textContent=\'✅ Copied!\').catch(()=>this.textContent=\'❌ Failed\')"'
+                    f' style="width:100%;background:#1e293b;border:1px solid #4f46e5;color:#a78bfa;'
+                    f'border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;">'
+                    f'📤 Share</button>',
+                    unsafe_allow_html=True,
+                )
 
         # ── Log All Parlays + SGPs ──
         _has_parlays = bool(report["parlays"])
@@ -2699,28 +2744,52 @@ def render_sport_tab(sport: str, use_live: bool):
                         nb_str = f" [NB{nb_delta:+.1%}]" if abs(nb_delta) >= 0.005 else ""
                         st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({int(leg['over_odds'])}) *{edge_pct}*{nb_str}")
                     # Log SGP button
-                    if st.button(f"📝 Log SGP to Tracker",
-                                 key=f"log_sgp_{sport}_{i}", use_container_width=True):
-                        from bet_tracker import add_bet
-                        n_legs = len(sgp["legs"])
-                        for leg in sgp["legs"]:
-                            prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
-                            mkt = leg.get("market", "")
-                            sk = (leg["player"].lower(), mkt, float(leg.get("line", 0.5)))
-                            sl = sharp_map.get(sk, {})
-                            add_bet(
-                                sport=sport,
-                                player=leg["player"],
-                                prop=f"{prop} O{leg.get('line','')} [SGP]",
-                                line=leg.get("line", 0.5),
-                                odds=int(leg["over_odds"]),
-                                stake=round(stake / n_legs, 2),
-                                book="",
-                                notes=f"Auto-logged from SGP {sgp['game']} | {pout['american_odds']} combined",
-                                sharp_odds=sl.get("consensus_odds"),
-                                fair_est=leg.get("fair_est"),
-                            )
-                        st.success(f"✅ SGP legs logged to Tracker!")
+                    sgp_log_col, sgp_share_col = st.columns([3, 1])
+                    with sgp_log_col:
+                        if st.button(f"📝 Log SGP to Tracker",
+                                     key=f"log_sgp_{sport}_{i}", use_container_width=True):
+                            from bet_tracker import add_bet
+                            n_legs = len(sgp["legs"])
+                            for leg in sgp["legs"]:
+                                prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                                mkt = leg.get("market", "")
+                                sk = (leg["player"].lower(), mkt, float(leg.get("line", 0.5)))
+                                sl = sharp_map.get(sk, {})
+                                add_bet(
+                                    sport=sport,
+                                    player=leg["player"],
+                                    prop=f"{prop} O{leg.get('line','')} [SGP]",
+                                    line=leg.get("line", 0.5),
+                                    odds=int(leg["over_odds"]),
+                                    stake=round(stake / n_legs, 2),
+                                    book="",
+                                    notes=f"Auto-logged from SGP {sgp['game']} | {pout['american_odds']} combined",
+                                    sharp_odds=sl.get("consensus_odds"),
+                                    fair_est=leg.get("fair_est"),
+                                )
+                            st.success(f"✅ SGP legs logged to Tracker!")
+                    with sgp_share_col:
+                        _sgp_lines = "\n".join(
+                            f"  {j}. {leg['player']} — "
+                            f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
+                            f"O{leg.get('line','')} ({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
+                            for j, leg in enumerate(sgp["legs"], 1)
+                        )
+                        _share_sgp = (
+                            f"🔗 SGP — {sgp['game']} | {sport}\n"
+                            f"{_sgp_lines}\n"
+                            f"📈 Combined: {pout['american_odds']}  |  EV: {ev_score*100:+.1f}%\n"
+                            f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
+                            f"— via Sports Betting Plus"
+                        )
+                        st.markdown(
+                            f'<button onclick="navigator.clipboard.writeText({json.dumps(_share_sgp)})'
+                            f'.then(()=>this.textContent=\'✅ Copied!\').catch(()=>this.textContent=\'❌ Failed\')"'
+                            f' style="width:100%;background:#1e293b;border:1px solid #4f46e5;color:#a78bfa;'
+                            f'border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;">'
+                            f'📤 Share</button>',
+                            unsafe_allow_html=True,
+                        )
         else:
             st.info("No games with 3+ unique value players found.")
 
