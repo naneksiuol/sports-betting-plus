@@ -2685,24 +2685,109 @@ def render_sport_tab(sport: str, use_live: bool):
                 with size_tabs[tab_idx]:
                     tab_idx += 1
                     combos = diverse[key]
-                    combo_cols = st.columns(min(len(combos), 3))
                     for ci, sgp in enumerate(combos):
-                        with combo_cols[ci % 3]:
-                            pout = sgp["payout"]
-                            pen  = sgp.get("independence_penalty", 1.0)
-                            ev   = sgp.get("combined_ev", 0)
-                            st.markdown(f"**#{ci+1} — {sgp['game']}**")
-                            st.metric(
-                                "Payout",
-                                f"${pout['payout']:.2f}",
-                                delta=f"{pout['american_odds']} odds",
+                        pout = sgp["payout"]
+                        pen  = sgp.get("independence_penalty", 1.0)
+                        ev   = sgp.get("combined_ev", 0)
+                        ev_pct  = ev * 100
+                        ev_sign = "+" if ev_pct >= 0 else ""
+                        ev_col  = "#34d399" if ev_pct > 0 else "#ff6060"
+                        amer    = pout["american_odds"]
+                        amer_fmt = f"+{amer}" if isinstance(amer, (int, float)) and amer > 0 else str(amer)
+                        win_prob = sgp.get("win_prob", 0)
+
+                        # Build legs HTML
+                        legs_html = ""
+                        for j, leg in enumerate(sgp["legs"], 1):
+                            prop     = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                            edge_val = leg.get("edge", 0)
+                            edge_col = "#34d399" if edge_val > 0 else "#ff6060"
+                            odds_i   = int(leg["over_odds"])
+                            odds_fmt = f"+{odds_i}" if odds_i > 0 else str(odds_i)
+                            legs_html += f"""
+<div style="display:flex;justify-content:space-between;align-items:flex-start;
+            padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+  <div style="flex:1;min-width:0;">
+    <div style="color:#e2e8f0;font-size:14px;font-weight:600;
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      {j}. {leg['player']}
+    </div>
+    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">
+      {prop} O{leg.get('line','')}
+      <span style="color:#a78bfa;font-weight:700;"> {odds_fmt}</span>
+      &nbsp;·&nbsp;<span style="color:#64748b;">{leg.get('team','')}</span>
+    </div>
+  </div>
+  <div style="margin-left:12px;flex-shrink:0;">
+    <span style="color:{edge_col};font-size:13px;font-weight:700;">{'+' if edge_val>=0 else ''}{edge_val:.1%}</span>
+  </div>
+</div>"""
+
+                        st.markdown(f"""
+<div style="background:linear-gradient(160deg,#12121f 0%,#1a1a2e 100%);
+            border:1px solid #2e2e4a;border-radius:16px;padding:0;
+            margin-bottom:16px;overflow:hidden;">
+  <div style="background:linear-gradient(90deg,#0891b2 0%,#7c3aed 100%);
+              padding:10px 16px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="color:#fff;font-size:13px;font-weight:800;letter-spacing:0.5px;">
+      #{ci+1} · {n}-LEG SGP — {sgp['game']}
+    </span>
+    <span style="color:rgba(255,255,255,0.75);font-size:12px;">
+      Win {win_prob:.1%}
+    </span>
+  </div>
+  <div style="display:flex;gap:0;border-bottom:1px solid #2e2e4a;">
+    <div style="flex:1;padding:14px 16px;border-right:1px solid #2e2e4a;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;">Combined Odds</div>
+      <div style="color:#a78bfa;font-size:26px;font-weight:900;line-height:1;">{amer_fmt}</div>
+    </div>
+    <div style="flex:1;padding:14px 16px;border-right:1px solid #2e2e4a;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;">Payout on ${pout['stake']:.0f}</div>
+      <div style="color:#34d399;font-size:26px;font-weight:900;line-height:1;">${pout['payout']:.2f}</div>
+    </div>
+    <div style="flex:1;padding:14px 16px;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:4px;">EV</div>
+      <div style="color:{ev_col};font-size:26px;font-weight:900;line-height:1;">{ev_sign}{ev_pct:.1f}%</div>
+    </div>
+  </div>
+  <div style="padding:4px 16px 8px;">{legs_html}</div>
+</div>""", unsafe_allow_html=True)
+
+                        # Log + Share buttons
+                        d_log_col, d_share_col = st.columns([3, 1])
+                        with d_log_col:
+                            if st.button(f"Log SGP #{ci+1} to Tracker",
+                                         key=f"log_div_{sport}_{n}_{ci}", use_container_width=True):
+                                from bet_tracker import add_bet
+                                for leg in sgp["legs"]:
+                                    prop = market_labels.get(leg.get("market", ""), leg.get("market", ""))
+                                    sk = (leg["player"].lower(), leg.get("market",""), float(leg.get("line", 0.5)))
+                                    sl = sharp_map.get(sk, {})
+                                    add_bet(
+                                        sport=sport, player=leg["player"],
+                                        prop=f"{prop} O{leg.get('line','')} [Best SGP #{ci+1}]",
+                                        line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                                        stake=round(stake / n, 2), book="",
+                                        notes=f"Auto-logged best {n}-leg SGP #{ci+1} | {sgp['game']} | {amer_fmt}",
+                                        sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
+                                    )
+                                st.success(f"✅ SGP #{ci+1} legs logged!")
+                        with d_share_col:
+                            _div_lines = "\n".join(
+                                f"  {j}. {leg['player']} — "
+                                f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
+                                f"O{leg.get('line','')} "
+                                f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
+                                for j, leg in enumerate(sgp["legs"], 1)
                             )
-                            st.caption(f"Combined EV: {ev*100:+.2f}% | Corr. penalty: {pen:.0%}")
-                            for j, leg in enumerate(sgp["legs"], 1):
-                                prop    = market_labels.get(leg.get("market", ""), leg.get("market", ""))
-                                edge_p  = f"{leg.get('edge', 0)*100:+.1f}%"
-                                odds_f  = f"+{int(leg['over_odds'])}" if leg['over_odds'] > 0 else str(int(leg['over_odds']))
-                                st.markdown(f"{j}. **{leg['player']}** — {prop} O{leg.get('line','')} ({odds_f}) *{edge_p}*")
+                            _share_div = (
+                                f"🔗 Best {n}-Leg SGP #{ci+1} — {sgp['game']} | {sport}\n"
+                                f"{_div_lines}\n"
+                                f"📈 Combined: {amer_fmt}  |  EV: {ev_sign}{ev_pct:.1f}%\n"
+                                f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
+                                f"— via Sports Betting Plus"
+                            )
+                            _share_btn(_share_div, f"div_{sport}_{n}_{ci}", width="100%")
 
         st.divider()
         st.markdown("#### 🔗 Same-Game Parlays (SGPs)")
