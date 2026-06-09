@@ -2477,7 +2477,12 @@ def render_sport_tab(sport: str, use_live: bool):
             ev_pct   = ev.get("ev_pct", 0)
             ev_sign  = "+" if ev_pct >= 0 else ""
             ev_col   = "#34d399" if ev_pct > 0 else "#ff6060"
-            win_prob = ev.get("win_prob", 0)
+            win_prob = ev.get("win_prob") or 0
+            if not win_prob:
+                _wp = 1.0
+                for _l in p.get("legs", []):
+                    _wp *= min(max(float(_l.get("fair_est") or 0.5), 0.001), 0.999)
+                win_prob = round(_wp, 4)
             amer     = pout["american_odds"]
             amer_fmt = f"+{amer}" if isinstance(amer, (int, float)) and amer > 0 else str(amer)
 
@@ -2694,7 +2699,12 @@ def render_sport_tab(sport: str, use_live: bool):
                         ev_col  = "#34d399" if ev_pct > 0 else "#ff6060"
                         amer    = pout["american_odds"]
                         amer_fmt = f"+{amer}" if isinstance(amer, (int, float)) and amer > 0 else str(amer)
-                        win_prob = sgp.get("win_prob", 0)
+                        win_prob = sgp.get("win_prob") or 0
+                        if not win_prob:
+                            _wp = 1.0
+                            for _l in sgp.get("legs", []):
+                                _wp *= min(max(float(_l.get("fair_est") or 0.5), 0.001), 0.999)
+                            win_prob = round(_wp, 4)
 
                         # Build legs HTML
                         legs_html = ""
@@ -2803,7 +2813,12 @@ def render_sport_tab(sport: str, use_live: bool):
                 quality  = "🔥 Strong" if ev_score > 0.04 else ("✅ Good" if ev_score > 0.02 else "🟡 Marginal")
                 amer     = pout["american_odds"]
                 amer_fmt = f"+{amer}" if isinstance(amer, (int, float)) and amer > 0 else str(amer)
-                win_prob = sgp.get("win_prob", 0)
+                win_prob = sgp.get("win_prob") or 0
+                if not win_prob:
+                    _wp = 1.0
+                    for _l in sgp.get("legs", []):
+                        _wp *= min(max(float(_l.get("fair_est") or 0.5), 0.001), 0.999)
+                    win_prob = round(_wp, 4)
                 ctax     = sgp.get("correlation_tax", {})
                 r_ij     = ctax.get("r_ij", 1.0)
                 tax_pct  = ctax.get("correlation_tax_pct", 0.0)
