@@ -101,6 +101,12 @@ NBA_PROP_STAT_MAP = {
     "threes":      "fg3m",
     "3pm":         "fg3m",
     "three pointers": "fg3m",
+    "points":      "pts",
+    "rebounds":    "reb",
+    "assists":     "ast",
+    "steals":      "stl",
+    "blocks":      "blk",
+    "turnovers":   "tov",
 }
 
 # ── NHL market → stat field or callable ──────────────────────────────────────
@@ -330,7 +336,9 @@ def _get_espn_basketball_stats(date_str: str, league: str) -> dict:
         events = sb.json().get("events", [])
         for event in events:
             status = event.get("status", {}).get("type", {})
-            if not status.get("completed"):
+            state = event.get("status", {}).get("type", {}).get("state", "")
+            # Accept completed flag OR state=="post" (game finished but ESPN may not set completed=True)
+            if not status.get("completed") and state != "post":
                 continue
             event_id = event["id"]
             try:
@@ -429,7 +437,6 @@ def _grade_nba(bets: list[dict], date_str: str, league_id: str, label: str, dry_
                 update_result(bet["id"], "void")
             print(f"  ↩️  [NBA/WNBA] {bet['player']} — DNP/no stats → VOID")
             graded += 1
-            continue
             continue
 
         result = _grade_bet(float(val), float(line))
