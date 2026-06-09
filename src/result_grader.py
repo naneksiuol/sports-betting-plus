@@ -644,8 +644,59 @@ def grade_pending_bets(target_date: str = None, dry_run: bool = False) -> dict:
     }
 
 
+def manual_grade(bet_id: str, result: str) -> None:
+    """
+    Manually grade a single bet by ID.
+    result: 'win' | 'loss' | 'push' | 'void'
+    """
+    valid = {"win", "loss", "push", "void"}
+    if result not in valid:
+        print(f"❌ Invalid result '{result}'. Use: {', '.join(valid)}")
+        return
+    bets = load_bets()
+    match = next((b for b in bets if b["id"] == bet_id), None)
+    if not match:
+        print(f"❌ Bet ID '{bet_id}' not found")
+        return
+    update_result(bet_id, result)
+    emoji = {"win": "✅", "loss": "❌", "push": "↩️", "void": "🚫"}.get(result, "?")
+    print(f"  {emoji} Manual: {match['player']} | {match.get('prop','')} → {result.upper()}")
+
+
+def list_pending(date_str: str) -> None:
+    """Print pending bets for a date with their IDs for manual grading."""
+    bets = load_bets()
+    pending = [b for b in bets if b["result"] == "pending" and b.get("date") == date_str]
+    if not pending:
+        print(f"No pending bets for {date_str}")
+        return
+    print(f"Pending bets for {date_str}:")
+    for b in pending:
+        print(f"  id={b['id']}  {b.get('sport','?')} | {b['player']} | {b.get('prop','')} | line={b.get('line')}")
+
+
 if __name__ == "__main__":
-    dry = "--dry-run" in sys.argv
-    date_arg = next((a for a in sys.argv[1:] if a.startswith("20")), None)
+    args = sys.argv[1:]
+    dry = "--dry-run" in args
+
+    # Manual grade: py result_grader.py --manual <bet_id> <win|loss|push|void>
+    if "--manual" in args:
+        idx = args.index("--manual")
+        if idx + 2 < len(args):
+            manual_grade(args[idx + 1], args[idx + 2])
+        else:
+            print("Usage: py result_grader.py --manual <bet_id> <win|loss|push|void>")
+        sys.exit(0)
+
+    # List pending: py result_grader.py --list 2026-06-04
+    if "--list" in args:
+        idx = args.index("--list")
+        date_arg = args[idx + 1] if idx + 1 < len(args) else None
+        if not date_arg:
+            date_arg = next((a for a in args if a.startswith("20")), None)
+        list_pending(date_arg or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"))
+        sys.exit(0)
+
+    date_arg = next((a for a in args if a.startswith("20")), None)
     result = grade_pending_bets(target_date=date_arg, dry_run=dry)
     print(json.dumps(result, indent=2))
