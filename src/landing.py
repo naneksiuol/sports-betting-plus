@@ -10,20 +10,23 @@ import streamlit as st
 def show_landing(on_login: callable, on_signup: callable):
     _inject_css()
 
-    # ── Logo ──────────────────────────────────────────────────────────────────
+    # ── Logo / Hero (pure HTML — fully responsive, no Streamlit columns) ───────
     logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "logo.png")
     if os.path.exists(logo_path):
-        st.markdown('<div class="logo-wrap">', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([3, 1, 3])
-        with c2:
-            st.image(logo_path, use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        import base64
+        logo_b64 = base64.b64encode(open(logo_path, "rb").read()).decode()
+        ext = logo_path.rsplit(".", 1)[-1].lower()
+        mime = "image/png" if ext == "png" else "image/jpeg"
+        logo_html = (
+            f'<img src="data:{mime};base64,{logo_b64}" '
+            f'class="hero-logo" alt="Sports Betting Plus" />'
+        )
     else:
-        st.markdown('<div style="text-align:center;font-size:4rem;padding-top:2rem">🎯</div>', unsafe_allow_html=True)
+        logo_html = '<div class="hero-logo-emoji">🎯</div>'
 
-    # ── Hero ──────────────────────────────────────────────────────────────────
-    st.markdown("""
+    st.markdown(f"""
     <div class="hero">
+        {logo_html}
         <div class="hero-badge">⚡ LIVE ODDS · REAL EDGE · AI POWERED</div>
         <h1 class="hero-title">Beat the Book.<br><span class="hero-gradient">Every Day.</span></h1>
         <p class="hero-sub">
@@ -33,14 +36,14 @@ def show_landing(on_login: callable, on_signup: callable):
     </div>
     """, unsafe_allow_html=True)
 
-    # CTA buttons — real Streamlit buttons styled invisibly, HTML layer on top
+    # CTA buttons — centred pair, responsive
     st.markdown('<div class="cta-row">', unsafe_allow_html=True)
-    col1, col2, col3, col4 = st.columns([1.5, 1, 1, 1.5])
-    with col2:
+    cta1, cta2, cta3, cta4, cta5 = st.columns([1, 1.2, 0.3, 1.2, 1])
+    with cta2:
         if st.button("🚀 Start Free →", key="hero_signup", use_container_width=True, type="primary"):
             st.session_state["auth_mode"] = "signup"
             st.rerun()
-    with col3:
+    with cta4:
         if st.button("🔑 Log In", key="hero_login", use_container_width=True):
             st.session_state["auth_mode"] = "login"
             st.rerun()
@@ -189,7 +192,8 @@ def show_landing(on_login: callable, on_signup: callable):
     </div>
     """, unsafe_allow_html=True)
 
-    # Pricing CTA buttons
+    # Pricing CTA — stacks on mobile via CSS
+    st.markdown('<div class="pricing-cta-row">', unsafe_allow_html=True)
     pc1, pc2, pc3 = st.columns(3)
     with pc1:
         if st.button("Start Free", key="cta_free", use_container_width=True):
@@ -205,6 +209,7 @@ def show_landing(on_login: callable, on_signup: callable):
             st.session_state["auth_mode"] = "signup"
             st.session_state["pending_tier"] = "premium"
             st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:4rem'></div>", unsafe_allow_html=True)
 
@@ -234,31 +239,34 @@ def show_landing(on_login: callable, on_signup: callable):
     </div>
     """, unsafe_allow_html=True)
 
-    oa1, oa2, oa3 = st.columns([1.5, 1, 1.5])
-    with oa2:
+    # Real Streamlit buttons below the HTML display layer
+    st.markdown('<div class="auth-real-btns">', unsafe_allow_html=True)
+    ab1, ab2, ab3 = st.columns([1, 2, 1])
+    with ab2:
         if st.button("Sign Up with Email →", key="auth_cta_email", use_container_width=True, type="primary"):
             st.session_state["auth_mode"] = "signup"
             st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # hidden Google/Apple triggers — clicking the HTML divs doesn't wire to st,
-    # so we provide real buttons the user can also click
-    gg1, gg2, gg3, gg4 = st.columns([1, 1, 1, 1])
-    with gg1:
+    st.markdown('<div class="auth-secondary-btns">', unsafe_allow_html=True)
+    sb1, sb2, sb3, sb4 = st.columns(4)
+    with sb1:
         if st.button("Google Sign-In", key="google_cta", use_container_width=True):
             st.session_state["auth_mode"] = "login"
             st.rerun()
-    with gg2:
+    with sb2:
         if st.button("Apple Sign-In", key="apple_cta", use_container_width=True):
             st.session_state["auth_mode"] = "login"
             st.rerun()
-    with gg3:
+    with sb3:
         if st.button("Log In", key="bottom_login", use_container_width=True):
             st.session_state["auth_mode"] = "login"
             st.rerun()
-    with gg4:
+    with sb4:
         if st.button("Sign Up", key="bottom_signup", use_container_width=True):
             st.session_state["auth_mode"] = "signup"
             st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:3rem'></div>", unsafe_allow_html=True)
 
@@ -280,7 +288,13 @@ def _inject_css():
     }
     [data-testid="stHeader"] { background: #0a0a0f !important; }
     section[data-testid="stSidebar"] { display: none; }
-    .block-container { max-width: 1100px; padding: 0 1rem 2rem; }
+    .block-container {
+        max-width: 1100px;
+        padding: 0 1.25rem 3rem;
+    }
+    @media (max-width: 640px) {
+        .block-container { padding: 0 0.75rem 2rem; }
+    }
 
     /* ── Animated gradient text ── */
     @keyframes gradientShift {
@@ -289,13 +303,21 @@ def _inject_css():
         100% { background-position: 0% 50%; }
     }
 
-    /* ── Logo ── */
-    .logo-wrap { padding-top: 2rem; }
-
-    /* ── Hero ── */
+    /* ── Logo / Hero ── */
     .hero {
         text-align: center;
         padding: 2.5rem 1rem 1.5rem;
+    }
+    .hero-logo {
+        display: block;
+        margin: 0 auto 1.5rem;
+        width: clamp(120px, 28vw, 220px);
+        height: auto;
+        object-fit: contain;
+    }
+    .hero-logo-emoji {
+        font-size: clamp(3rem, 10vw, 5rem);
+        margin-bottom: 1rem;
     }
     .hero-badge {
         display: inline-block;
@@ -304,13 +326,13 @@ def _inject_css():
         border: 1px solid rgba(139,92,246,0.4);
         border-radius: 20px;
         padding: 5px 18px;
-        font-size: 0.72rem;
+        font-size: clamp(0.62rem, 1.5vw, 0.72rem);
         letter-spacing: 0.12em;
         font-weight: 600;
         margin-bottom: 1.2rem;
     }
     .hero-title {
-        font-size: clamp(2.2rem, 6vw, 4rem);
+        font-size: clamp(2rem, 7vw, 4rem);
         font-weight: 900;
         line-height: 1.1;
         margin: 0.4rem 0;
@@ -327,7 +349,7 @@ def _inject_css():
     }
     .hero-sub {
         color: #94a3b8;
-        font-size: clamp(0.95rem, 2vw, 1.15rem);
+        font-size: clamp(0.9rem, 2.5vw, 1.1rem);
         max-width: 580px;
         margin: 1rem auto 1.5rem;
         line-height: 1.65;
@@ -341,29 +363,34 @@ def _inject_css():
         display: flex;
         justify-content: center;
         flex-wrap: wrap;
-        gap: 0.5rem 2.5rem;
-        padding: 1.8rem 2rem;
+        gap: 0.5rem 2rem;
+        padding: 1.5rem 1.5rem;
         background: #12121e;
         border-radius: 16px;
         border: 1px solid rgba(139,92,246,0.2);
         margin: 0 auto;
     }
-    .stat { text-align: center; min-width: 100px; }
+    .stat { text-align: center; min-width: 80px; flex: 1 1 80px; }
     .stat-num {
         display: block;
-        font-size: clamp(1.4rem, 3vw, 2rem);
+        font-size: clamp(1.2rem, 3.5vw, 2rem);
         font-weight: 800;
         background: linear-gradient(135deg, #a78bfa, #22d3ee);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
     }
-    .stat-label { font-size: 0.78rem; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase; }
+    .stat-label {
+        font-size: clamp(0.65rem, 1.5vw, 0.78rem);
+        color: #64748b;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
 
     /* ── Section titles ── */
     .section-title {
         text-align: center;
-        font-size: clamp(1.5rem, 3.5vw, 2.2rem);
+        font-size: clamp(1.4rem, 4vw, 2.2rem);
         font-weight: 800;
         color: #f1f1f5;
         margin-bottom: 2rem;
@@ -373,18 +400,17 @@ def _inject_css():
     /* ── How it works ── */
     .steps-row {
         display: flex;
-        gap: 1.5rem;
+        gap: 1.25rem;
         flex-wrap: wrap;
         justify-content: center;
     }
     .step-card {
-        flex: 1;
-        min-width: 240px;
+        flex: 1 1 220px;
         max-width: 320px;
         background: #12121e;
         border: 1px solid rgba(255,255,255,0.07);
         border-radius: 16px;
-        padding: 2rem 1.5rem;
+        padding: 2rem 1.25rem;
         text-align: center;
         position: relative;
         transition: border-color 0.2s, transform 0.2s;
@@ -429,7 +455,7 @@ def _inject_css():
         background: #12121e;
         border: 1px solid rgba(255,255,255,0.07);
         border-radius: 14px;
-        padding: 1.6rem 1.4rem;
+        padding: 1.5rem 1.25rem;
         transition: border-color 0.2s, transform 0.2s;
     }
     .feature-card:hover {
@@ -437,25 +463,19 @@ def _inject_css():
         transform: translateY(-2px);
     }
     .feat-icon { font-size: 1.8rem; margin-bottom: 0.6rem; }
-    .feature-card h4 {
-        font-size: 0.97rem;
-        font-weight: 700;
-        color: #f1f1f5;
-        margin: 0 0 0.5rem;
-    }
+    .feature-card h4 { font-size: 0.97rem; font-weight: 700; color: #f1f1f5; margin: 0 0 0.5rem; }
     .feature-card p { font-size: 0.85rem; color: #94a3b8; line-height: 1.55; margin: 0; }
 
     /* ── Pricing ── */
     .pricing-row {
         display: flex;
-        gap: 1.5rem;
+        gap: 1.25rem;
         flex-wrap: wrap;
         justify-content: center;
         margin-bottom: 1.25rem;
     }
     .price-card {
-        flex: 1;
-        min-width: 240px;
+        flex: 1 1 220px;
         max-width: 320px;
         background: #12121e;
         border: 1px solid rgba(255,255,255,0.08);
@@ -482,19 +502,8 @@ def _inject_css():
         letter-spacing: 0.1em;
         white-space: nowrap;
     }
-    .plan-name {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #e2e8f0;
-        margin-bottom: 0.5rem;
-    }
-    .plan-price {
-        font-size: 2.8rem;
-        font-weight: 900;
-        color: #f1f1f5;
-        line-height: 1;
-        margin-bottom: 0.3rem;
-    }
+    .plan-name { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin-bottom: 0.5rem; }
+    .plan-price { font-size: 2.8rem; font-weight: 900; color: #f1f1f5; line-height: 1; margin-bottom: 0.3rem; }
     .plan-price span { font-size: 1rem; color: #64748b; font-weight: 400; }
     .plan-desc { font-size: 0.82rem; color: #64748b; margin: 0 0 1rem; }
     .plan-features { list-style: none; padding: 0; margin: 0; }
@@ -509,26 +518,34 @@ def _inject_css():
     .chk { color: #4ade80; font-weight: 700; flex-shrink: 0; }
     .ex  { color: #475569; font-weight: 700; flex-shrink: 0; }
 
+    /* Pricing CTA stacks to single column on mobile */
+    .pricing-cta-row [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    @media (max-width: 520px) {
+        .pricing-cta-row [data-testid="stHorizontalBlock"] > div {
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+    }
+
     /* ── Auth CTA ── */
     .auth-cta-section {
         text-align: center;
         background: linear-gradient(145deg, #12121e, #0f0f1a);
         border: 1px solid rgba(139,92,246,0.2);
         border-radius: 20px;
-        padding: 3.5rem 2rem 2rem;
+        padding: 3rem 1.5rem 1.5rem;
     }
     .auth-cta-title {
-        font-size: clamp(1.6rem, 4vw, 2.6rem);
+        font-size: clamp(1.5rem, 5vw, 2.6rem);
         font-weight: 900;
         color: #f1f1f5;
         margin: 0 0 0.6rem;
         letter-spacing: -0.02em;
     }
-    .auth-cta-sub {
-        color: #94a3b8;
-        font-size: 1rem;
-        margin: 0 0 2rem;
-    }
+    .auth-cta-sub { color: #94a3b8; font-size: 1rem; margin: 0 0 2rem; }
     .oauth-buttons {
         display: flex;
         justify-content: center;
@@ -540,25 +557,23 @@ def _inject_css():
         display: flex;
         align-items: center;
         gap: 0.6rem;
-        padding: 0.7rem 1.6rem;
+        padding: 0.7rem 1.4rem;
         border-radius: 10px;
         font-size: 0.9rem;
         font-weight: 600;
         cursor: pointer;
-        min-width: 200px;
+        min-width: 180px;
+        max-width: 100%;
         justify-content: center;
     }
-    .google-btn {
-        background: #fff;
-        color: #1a1a2e;
-        border: none;
-    }
-    .apple-btn {
-        background: #1c1c1e;
-        color: #f1f1f5;
-        border: 1px solid rgba(255,255,255,0.15);
-    }
+    .google-btn { background: #fff; color: #1a1a2e; border: none; }
+    .apple-btn  { background: #1c1c1e; color: #f1f1f5; border: 1px solid rgba(255,255,255,0.15); }
     .or-divider { color: #475569; font-size: 0.85rem; margin: 0.25rem 0 1rem; }
+
+    /* Hide the secondary (Google/Apple/LogIn/SignUp) buttons visually — they're
+       functional fallbacks for the HTML-only OAuth display above */
+    .auth-secondary-btns { margin-top: 0.5rem; opacity: 0.4; }
+    .auth-secondary-btns button { font-size: 0.75rem !important; }
 
     /* ── Footer ── */
     .footer {
@@ -569,7 +584,7 @@ def _inject_css():
     .footer p { color: #64748b; font-size: 0.85rem; margin: 0.25rem 0; }
     .footer-copy { font-size: 0.75rem !important; color: #334155 !important; }
 
-    /* ── Streamlit overrides ── */
+    /* ── Streamlit button overrides ── */
     div[data-testid="stButton"] > button {
         border-radius: 10px !important;
         font-weight: 600 !important;
