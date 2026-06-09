@@ -46,6 +46,25 @@ from settings_manager import load_settings, save_settings
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
+
+def _share_btn(text: str, uid: str, width: str = "auto") -> None:
+    """Render a clipboard share button that avoids JS quoting issues."""
+    import html as _html
+    safe = _html.escape(text, quote=False)
+    st.markdown(
+        f'<div id="sbwrap_{uid}" style="display:inline-block;width:{width}">'
+        f'  <span id="sbt_{uid}" style="display:none">{safe}</span>'
+        f'  <button onclick="'
+        f'    navigator.clipboard.writeText(document.getElementById(\'sbt_{uid}\').textContent)'
+        f'    .then(function(){{this.textContent=\'✅ Copied!\'}}.bind(this))'
+        f'    .catch(function(){{this.textContent=\'❌ Failed\'}}.bind(this))"'
+        f'  style="width:100%;background:#1e293b;border:1px solid #4f46e5;color:#a78bfa;'
+        f'border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;">'
+        f'📤 Share</button>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
 st.set_page_config(
     page_title="Sports Betting Plus Bot",
     page_icon="🎯",
@@ -661,14 +680,7 @@ def render_bet_tracker():
                         f"📅 {bet['date']}\n"
                         f"— via Sports Betting Plus"
                     )
-                    st.markdown(
-                        f'<button onclick="navigator.clipboard.writeText({json.dumps(share_text)})'
-                        f'.then(()=>this.textContent=\'✅ Copied!\').catch(()=>this.textContent=\'❌ Failed\')"'
-                        f' style="background:#1e293b;border:1px solid #334155;color:#94a3b8;'
-                        f'border-radius:8px;padding:4px 14px;font-size:12px;cursor:pointer;'
-                        f'margin-top:6px;">📤 Share</button>',
-                        unsafe_allow_html=True,
-                    )
+                    _share_btn(share_text, f"bet_{bet['id']}")
 
     st.divider()
 
@@ -2578,14 +2590,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
                     f"— via Sports Betting Plus"
                 )
-                st.markdown(
-                    f'<button onclick="navigator.clipboard.writeText({json.dumps(_share_parlay)})'
-                    f'.then(()=>this.textContent=\'✅ Copied!\').catch(()=>this.textContent=\'❌ Failed\')"'
-                    f' style="width:100%;background:#1e293b;border:1px solid #4f46e5;color:#a78bfa;'
-                    f'border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;">'
-                    f'📤 Share</button>',
-                    unsafe_allow_html=True,
-                )
+                _share_btn(_share_parlay, f"parlay_{sport}_{n}", width="100%")
 
         # ── Log All Parlays + SGPs ──
         _has_parlays = bool(report["parlays"])
@@ -2782,14 +2787,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
                             f"— via Sports Betting Plus"
                         )
-                        st.markdown(
-                            f'<button onclick="navigator.clipboard.writeText({json.dumps(_share_sgp)})'
-                            f'.then(()=>this.textContent=\'✅ Copied!\').catch(()=>this.textContent=\'❌ Failed\')"'
-                            f' style="width:100%;background:#1e293b;border:1px solid #4f46e5;color:#a78bfa;'
-                            f'border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;">'
-                            f'📤 Share</button>',
-                            unsafe_allow_html=True,
-                        )
+                        _share_btn(_share_sgp, f"sgp_{sport}_{i}", width="100%")
         else:
             st.info("No games with 3+ unique value players found.")
 
