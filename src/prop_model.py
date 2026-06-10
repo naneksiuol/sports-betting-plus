@@ -351,7 +351,9 @@ class PropModel:
             "n_jobs":          -1,
         }
 
-        model = lgb.LGBMClassifier(**params)
+        base_model = lgb.LGBMClassifier(**params)
+        # Wrap with isotonic calibration (beta calibration) for reliable probabilities
+        model = CalibratedClassifierCV(base_model, method="isotonic", cv=min(5, max(2, n // 20)))
         model.fit(X, y)
         train_preds = model.predict_proba(X)[:, 1]
 
@@ -429,6 +431,9 @@ class PropModel:
         edge: float = 0.0,
         edge_open: float = 0.0,
         fair_est: float = 0.5,
+        line_movement: float = 0.0,
+        days_rest: float = 3.0,
+        home_game: float = 0.0,
     ) -> float:
         """
         Return ML-predicted win probability (0-1).
@@ -446,6 +451,9 @@ class PropModel:
                 sport=sport,
                 edge=edge,
                 edge_open=edge_open,
+                line_movement=line_movement,
+                days_rest=days_rest,
+                home_game=home_game,
             )
             X = np.array([feats], dtype=np.float32)
             p = float(self._model.predict_proba(X)[0, 1])
@@ -504,9 +512,36 @@ class PropModel:
             edge    = float(row.get("edge", 0.0))
             fair    = float(row.get("fair_est", 0.5))
 
+            # New contextual features — safe defaults when columns absent
+            try:
+                line_movement = float(row["open_line"]) - line if "open_line" in row else 0.0
+            except Exception:
+                line_movement = 0.0
+
+            try:
+                import datetime
+                last_date_str = row.get("last_game_date")
+                row_date_str  = row.get("date", "")
+                if last_date_str and row_date_str:
+                    days_rest = max(0.0, float((
+                        datetime.date.fromisoformat(str(row_date_str)[:10]) -
+                        datetime.date.fromisoformat(str(last_date_str)[:10])
+                    ).days))
+                else:
+                    days_rest = 3.0
+            except Exception:
+                days_rest = 3.0
+
+            try:
+                venue     = str(row.get("home_away", row.get("venue", ""))).lower()
+                home_game = 1.0 if venue in ("home", "h") else 0.0
+            except Exception:
+                home_game = 0.0
+
             prob  = self.predict_prob(
                 odds=odds, opening_odds=open_o, line=line,
                 market=market, sport=sport, edge=edge, fair_est=fair,
+                line_movement=line_movement, days_rest=days_rest, home_game=home_game,
             )
             score = int(round(prob * 100))
             out.append({**row, "ml_prob": prob, "ml_score": max(0, min(100, score))})
