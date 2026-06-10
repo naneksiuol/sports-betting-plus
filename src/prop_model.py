@@ -254,7 +254,7 @@ class PropModel:
         """
         try:
             import lightgbm as lgb
-            from sklearn.model_selection import StratifiedKFold, cross_val_score
+            from sklearn.model_selection import StratifiedKFold, cross_val_score, TimeSeriesSplit
             from sklearn.metrics import roc_auc_score, brier_score_loss
         except ImportError as e:
             return {"status": "error", "msg": str(e)}
@@ -269,6 +269,9 @@ class PropModel:
             bets = [b for b in bets if str(b.get("sport", "")).upper() == self._sport]
 
         snap_idx = _build_snap_index(snaps)
+
+        # Sort chronologically so that temporal CV respects time ordering
+        bets = sorted(bets, key=lambda b: str(b.get("date", "")))
 
         X_raw, y_raw = [], []
         for bet in bets:
@@ -322,17 +325,26 @@ class PropModel:
         except Exception:
             auc = 0.5
 
-        # Cross-validation (if enough data)
+        # Temporal out-of-sample CV using TimeSeriesSplit (preserves time ordering)
         cv_auc = None
+        oos_brier = None
+        oos_auc = None
         if n >= 50:
             try:
-                # max(2, ...) ensures n_splits is never 1 (StratifiedKFold requires >= 2)
-                cv = StratifiedKFold(n_splits=max(2, min(5, n // 10)), shuffle=True, random_state=42)
-                cv_scores = cross_val_score(
-                    lgb.LGBMClassifier(**params), X, y,
-                    cv=cv, scoring="roc_auc",
-                )
-                cv_auc = round(float(cv_scores.mean()), 4)
+                tscv = TimeSeriesSplit(n_splits=3)
+                oos_preds, oos_labels = [], []
+                for train_idx, test_idx in tscv.split(X):
+                    m = lgb.LGBMClassifier(**params)
+                    m.fit(X[train_idx], y[train_idx])
+                    oos_preds.extend(m.predict_proba(X[test_idx])[:, 1])
+                    oos_labels.extend(y[test_idx])
+                if oos_labels:
+                    oos_brier = round(float(brier_score_loss(oos_labels, oos_preds)), 4)
+                    oos_auc = round(
+                        float(roc_auc_score(oos_labels, oos_preds))
+                        if len(set(oos_labels)) > 1 else 0.5, 4
+                    )
+                    cv_auc = oos_auc  # keep cv_auc populated for quality() below
             except Exception:
                 pass
 
@@ -356,6 +368,8 @@ class PropModel:
             "brier_score":  round(brier, 4),
             "train_auc":    round(auc, 4),
             "cv_auc":       cv_auc,
+            "oos_auc":      oos_auc,
+            "oos_brier":    oos_brier,
             "accuracy":     round(acc, 4),
             "importances":  importances,
             "params":       {k: v for k, v in params.items() if k not in ("verbose", "n_jobs", "random_state")},
