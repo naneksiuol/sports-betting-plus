@@ -11,22 +11,14 @@ def show_landing(on_login: callable, on_signup: callable):
     _inject_css()
 
     # ── Banner (full-width, above the fold) ───────────────────────────────────
-    banner_path = os.path.join(os.path.dirname(__file__), "..", "static", "banner.png")
-    logo_path   = os.path.join(os.path.dirname(__file__), "..", "static", "logo.png")
+    _static = os.path.join(os.path.dirname(__file__), "..", "static")
+    banner_path = os.path.join(_static, "banner.png")
+    logo_path   = os.path.join(_static, "logo.png")
     img_path    = banner_path if os.path.exists(banner_path) else (logo_path if os.path.exists(logo_path) else None)
     if img_path:
-        import base64
-        img_b64 = base64.b64encode(open(img_path, "rb").read()).decode()
-        ext     = img_path.rsplit(".", 1)[-1].lower()
-        mime    = "image/png" if ext == "png" else "image/jpeg"
-        is_banner = img_path == banner_path
-        img_class = "hero-banner" if is_banner else "hero-logo"
-        st.markdown(
-            f'<div class="banner-wrap">'
-            f'<img src="data:{mime};base64,{img_b64}" class="{img_class}" alt="Sports Betting Plus" />'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="banner-wrap">', unsafe_allow_html=True)
+        st.image(img_path, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(f"""
     <div class="hero">
@@ -322,16 +314,19 @@ def _inject_css():
     /* ── Banner ── */
     .banner-wrap {
         width: 100%;
-        margin: 0 0 0.5rem;
+        margin: -1rem 0 0.5rem;   /* pull flush to top, override Streamlit top padding */
         line-height: 0;
+        overflow: hidden;
     }
-    .hero-banner {
-        display: block;
-        width: 100%;
+    /* st.image renders inside [data-testid="stImage"] > img */
+    .banner-wrap [data-testid="stImage"],
+    .banner-wrap [data-testid="stImage"] img {
+        width: 100% !important;
         max-height: 280px;
         object-fit: cover;
-        object-position: center;
+        object-position: center top;
         border-radius: 0 0 16px 16px;
+        display: block;
     }
     .hero-logo {
         display: block;
