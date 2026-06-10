@@ -22,3 +22,4 @@ env/
 .DS_Store
 Thumbs.db
 .streamlit/secrets.toml
+.claude/worktrees/
