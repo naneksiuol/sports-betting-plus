@@ -3631,13 +3631,13 @@ def main():
 
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker"]
+    all_tab_labels = sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
     all_tabs = st.tabs(all_tab_labels)
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker"])], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"])], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
@@ -3689,16 +3689,16 @@ RAPIDAPI_KEY=your_key_here
             else:
                 render_sport_tab(sport, use_live)
 
-    # ML Models tab (third from last)
-    with all_tabs[-3]:
+    # ML Models tab (fourth from last)
+    with all_tabs[-4]:
         _render_ml_tab()
 
-    # CLV & ROI tab (second to last)
-    with all_tabs[-2]:
+    # CLV & ROI tab (third from last)
+    with all_tabs[-3]:
         render_clv_tab()
 
-    # Tracker tab (last)
-    with all_tabs[-1]:
+    # Tracker tab (second to last)
+    with all_tabs[-2]:
         if _tiers and not _tiers.can(_current_tier, "tracker"):
             st.markdown("""
             <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
@@ -3713,6 +3713,10 @@ RAPIDAPI_KEY=your_key_here
         else:
             render_bet_tracker()
 
+    # Leaderboard tab (last)
+    with all_tabs[-1]:
+        render_leaderboard()
+
     st.divider()
     st.markdown("""
 <div style="text-align:center;padding:28px 0 8px;border-top:1px solid #2a2a3a;margin-top:24px;">
@@ -3721,13 +3725,181 @@ RAPIDAPI_KEY=your_key_here
     <span style="color:#fff;font-size:14px;font-weight:800;letter-spacing:-0.3px;">Sports Betting+</span>
   </div>
   <p style="color:#333;font-size:11px;margin:4px 0 2px;">
-    Live odds via The Odds API &nbsp;·&nbsp; AI analysis by Groq &nbsp;·&nbsp; Sharp data via Action Network
+    Live odds via The Odds API &nbsp;·&nbsp; AI analysis by Groq &nbsp;·&nbsp; Stats via ESPN public API
   </p>
   <p style="color:#262630;font-size:11px;margin:0;">
     Always bet responsibly. Past performance does not guarantee future results.
   </p>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ── CLV Leaderboard ───────────────────────────────────────────────────────────
+def render_leaderboard():
+    """
+    Public anonymous CLV leaderboard — shows top bettors by avg CLV.
+    Requires users to opt in and choose a display handle.
+    Data is fetched via the Supabase service role (read-only aggregate query).
+    """
+    st.markdown("## 🏆 CLV Leaderboard")
+    st.caption(
+        "Anonymous leaderboard ranked by Closing Line Value — the gold-standard measure of long-term edge. "
+        "Opt in below to appear. Your real name is never shown."
+    )
+
+    # ── Opt-in toggle (for authenticated users) ──────────────────────────────
+    if _SUPABASE_CONFIGURED:
+        uid = st.session_state.get("user_id")
+        if uid:
+            import auth as _auth_mod
+            profile = st.session_state.get("profile") or {}
+            current_opt_in = bool(profile.get("leaderboard_opt_in", False))
+            current_handle = profile.get("leaderboard_handle") or ""
+
+            with st.expander("⚙️ My Leaderboard Settings", expanded=False):
+                opt_in = st.toggle("Appear on leaderboard", value=current_opt_in,
+                                   help="Your handle and CLV stats are shown anonymously. No personal info is revealed.")
+                handle = st.text_input(
+                    "Display handle",
+                    value=current_handle,
+                    max_chars=24,
+                    placeholder="e.g. SharpBettor99",
+                    help="Shown publicly. No real name, email, or betting history details are exposed.",
+                )
+                if st.button("💾 Save", key="lb_save"):
+                    if opt_in and not handle.strip():
+                        st.error("Enter a display handle to appear on the leaderboard.")
+                    else:
+                        try:
+                            from supabase import create_client as _sc
+                            _sb = _sc(
+                                os.environ.get("SUPABASE_URL", ""),
+                                os.environ.get("SUPABASE_ANON_KEY", ""),
+                            )
+                            access = st.session_state.get("access_token")
+                            if access:
+                                _sb.auth.set_session(access, st.session_state.get("refresh_token", ""))
+                            _sb.table("profiles").update({
+                                "leaderboard_opt_in": opt_in,
+                                "leaderboard_handle": handle.strip() if opt_in else None,
+                            }).eq("id", uid).execute()
+                            # Refresh cached profile
+                            if "profile" in st.session_state:
+                                st.session_state["profile"]["leaderboard_opt_in"] = opt_in
+                                st.session_state["profile"]["leaderboard_handle"] = handle.strip()
+                            st.success("✅ Saved!" if opt_in else "✅ Removed from leaderboard.")
+                            st.rerun()
+                        except Exception as _e:
+                            st.error(f"Save failed: {_e}")
+
+    st.divider()
+
+    # ── Fetch leaderboard data ─────────────────────────────────────────────────
+    rows: list[dict] = []
+    try:
+        if _SUPABASE_CONFIGURED:
+            from supabase import create_client as _sc2
+            _sb2 = _sc2(
+                os.environ.get("SUPABASE_URL", ""),
+                os.environ.get("SUPABASE_SERVICE_KEY", ""),
+            )
+            # Get opted-in profiles
+            profiles_resp = (
+                _sb2.table("profiles")
+                .select("id, leaderboard_handle")
+                .eq("leaderboard_opt_in", True)
+                .not_.is_("leaderboard_handle", "null")
+                .execute()
+            )
+            opted_in = {p["id"]: p["leaderboard_handle"] for p in (profiles_resp.data or [])}
+
+            if opted_in:
+                # Fetch settled bets for opted-in users with CLV data
+                bets_resp = (
+                    _sb2.table("bets")
+                    .select("user_id, clv, opening_clv, result, stake")
+                    .in_("user_id", list(opted_in.keys()))
+                    .in_("result", ["win", "loss", "push"])
+                    .execute()
+                )
+                # Aggregate per user
+                from collections import defaultdict
+                agg: dict = defaultdict(lambda: {
+                    "clv_vals": [], "wins": 0, "losses": 0, "total_staked": 0.0
+                })
+                for b in (bets_resp.data or []):
+                    uid_b = b["user_id"]
+                    clv = b.get("clv") if b.get("clv") is not None else b.get("opening_clv")
+                    if clv is not None:
+                        agg[uid_b]["clv_vals"].append(float(clv))
+                    if b.get("result") == "win":
+                        agg[uid_b]["wins"] += 1
+                    elif b.get("result") == "loss":
+                        agg[uid_b]["losses"] += 1
+                    agg[uid_b]["total_staked"] += float(b.get("stake") or 0)
+
+                for uid_b, d in agg.items():
+                    if len(d["clv_vals"]) < 10:
+                        continue  # require at least 10 bets with CLV to appear
+                    avg_clv = round(sum(d["clv_vals"]) / len(d["clv_vals"]), 2)
+                    decisive = d["wins"] + d["losses"]
+                    win_rate = round(100 * d["wins"] / decisive, 1) if decisive > 0 else 0.0
+                    rows.append({
+                        "Handle":      opted_in[uid_b],
+                        "Avg CLV":     avg_clv,
+                        "CLV Bets":    len(d["clv_vals"]),
+                        "Win Rate":    win_rate,
+                        "Total Staked": round(d["total_staked"], 0),
+                    })
+
+                rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
+    except Exception:
+        pass
+
+    if not rows:
+        st.info(
+            "No leaderboard data yet. "
+            "Be the first to opt in — log at least 10 bets with CLV data, "
+            "then toggle **Appear on leaderboard** above."
+        )
+        return
+
+    # ── Podium ────────────────────────────────────────────────────────────────
+    medals = ["🥇", "🥈", "🥉"]
+    podium_cols = st.columns(min(3, len(rows)))
+    for idx, (col, row) in enumerate(zip(podium_cols, rows[:3])):
+        clv_color = "#00ff88" if row["Avg CLV"] > 0 else "#ff6060"
+        col.markdown(f"""
+        <div style='background:rgba(0,212,255,0.06);border:1px solid #00d4ff33;
+                    border-radius:12px;padding:1rem;text-align:center;'>
+            <div style='font-size:2rem'>{medals[idx]}</div>
+            <div style='font-size:1.1rem;font-weight:700;margin:4px 0'>{row['Handle']}</div>
+            <div style='color:{clv_color};font-size:1.4rem;font-weight:800'>
+                {row['Avg CLV']:+.2f}% CLV
+            </div>
+            <div style='color:#aaa;font-size:0.8rem'>{row['CLV Bets']} bets · {row['Win Rate']}% win</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Full table ─────────────────────────────────────────────────────────────
+    st.markdown("### 📊 Full Rankings")
+    ranked_rows = [
+        {
+            "Rank":           f"#{i+1}",
+            "Handle":         r["Handle"],
+            "Avg CLV":        f"{r['Avg CLV']:+.2f}%",
+            "CLV Bets":       r["CLV Bets"],
+            "Win Rate":       f"{r['Win Rate']}%",
+        }
+        for i, r in enumerate(rows)
+    ]
+    st.dataframe(pd.DataFrame(ranked_rows), use_container_width=True, hide_index=True)
+    st.caption(
+        f"Updated live · Minimum 10 settled bets with CLV required · "
+        f"{len(rows)} bettors on the board"
+    )
 
 
 if __name__ == "__main__":
