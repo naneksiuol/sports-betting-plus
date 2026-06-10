@@ -197,7 +197,7 @@ def load_bets(user_id: str = None) -> list[dict]:
         return _json_load()
 
     try:
-        client = _authed_client() or _service_client()
+        client = _authed_client()
         if client is None:
             return _json_load()
         resp = (
@@ -225,7 +225,7 @@ def save_bets(bets: list[dict], user_id: str = None):
         return
 
     try:
-        client = _authed_client() or _service_client()
+        client = _authed_client()
         if client is None:
             _json_save(bets)
             return
@@ -339,7 +339,7 @@ def update_result(bet_id: str, result: str, closing_odds: int = None,
 
     if _supabase_configured() and uid:
         try:
-            client = _authed_client() or _service_client()
+            client = _authed_client()
             if client:
                 resp = (
                     client.table("bets")
@@ -384,7 +384,7 @@ def delete_bet(bet_id: str, user_id: str = None):
 
     if _supabase_configured() and uid:
         try:
-            client = _authed_client() or _service_client()
+            client = _authed_client()
             if client:
                 client.table("bets").delete().eq("id", bet_id).eq("user_id", uid).execute()
                 return

@@ -3821,19 +3821,21 @@ def render_leaderboard():
         return
 
     # ── Podium ────────────────────────────────────────────────────────────────
+    import html as _html_mod
     medals = ["🥇", "🥈", "🥉"]
     podium_cols = st.columns(min(3, len(rows)))
     for idx, (col, row) in enumerate(zip(podium_cols, rows[:3])):
         clv_color = "#00ff88" if row["Avg CLV"] > 0 else "#ff6060"
+        safe_handle = _html_mod.escape(str(row["Handle"]))
         col.markdown(f"""
         <div style='background:rgba(0,212,255,0.06);border:1px solid #00d4ff33;
                     border-radius:12px;padding:1rem;text-align:center;'>
             <div style='font-size:2rem'>{medals[idx]}</div>
-            <div style='font-size:1.1rem;font-weight:700;margin:4px 0'>{row['Handle']}</div>
+            <div style='font-size:1.1rem;font-weight:700;margin:4px 0'>{safe_handle}</div>
             <div style='color:{clv_color};font-size:1.4rem;font-weight:800'>
                 {row['Avg CLV']:+.2f}% CLV
             </div>
-            <div style='color:#aaa;font-size:0.8rem'>{row['CLV Bets']} bets · {row['Win Rate']}% win</div>
+            <div style='color:#aaa;font-size:0.8rem'>{int(row['CLV Bets'])} bets · {row['Win Rate']}% win</div>
         </div>
         """, unsafe_allow_html=True)
 
