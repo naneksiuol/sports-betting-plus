@@ -82,6 +82,9 @@ if _SUPABASE_CONFIGURED:
             )
         st.stop()
 
+    # Clear auth UI state so login form doesn't ghost behind the dashboard
+    st.session_state.pop("auth_mode", None)
+
     # User is logged in — show user menu in sidebar
     auth_ui.show_user_menu()
 

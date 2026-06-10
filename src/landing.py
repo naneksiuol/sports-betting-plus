@@ -10,23 +10,26 @@ import streamlit as st
 def show_landing(on_login: callable, on_signup: callable):
     _inject_css()
 
-    # ── Logo / Hero (pure HTML — fully responsive, no Streamlit columns) ───────
-    logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "logo.png")
-    if os.path.exists(logo_path):
+    # ── Banner (full-width, above the fold) ───────────────────────────────────
+    banner_path = os.path.join(os.path.dirname(__file__), "..", "static", "banner.png")
+    logo_path   = os.path.join(os.path.dirname(__file__), "..", "static", "logo.png")
+    img_path    = banner_path if os.path.exists(banner_path) else (logo_path if os.path.exists(logo_path) else None)
+    if img_path:
         import base64
-        logo_b64 = base64.b64encode(open(logo_path, "rb").read()).decode()
-        ext = logo_path.rsplit(".", 1)[-1].lower()
-        mime = "image/png" if ext == "png" else "image/jpeg"
-        logo_html = (
-            f'<img src="data:{mime};base64,{logo_b64}" '
-            f'class="hero-logo" alt="Sports Betting Plus" />'
+        img_b64 = base64.b64encode(open(img_path, "rb").read()).decode()
+        ext     = img_path.rsplit(".", 1)[-1].lower()
+        mime    = "image/png" if ext == "png" else "image/jpeg"
+        is_banner = img_path == banner_path
+        img_class = "hero-banner" if is_banner else "hero-logo"
+        st.markdown(
+            f'<div class="banner-wrap">'
+            f'<img src="data:{mime};base64,{img_b64}" class="{img_class}" alt="Sports Betting Plus" />'
+            f'</div>',
+            unsafe_allow_html=True,
         )
-    else:
-        logo_html = '<div class="hero-logo-emoji">🎯</div>'
 
     st.markdown(f"""
     <div class="hero">
-        {logo_html}
         <div class="hero-badge">⚡ LIVE ODDS · REAL EDGE · AI POWERED</div>
         <h1 class="hero-title">Beat the Book.<br><span class="hero-gradient">Every Day.</span></h1>
         <p class="hero-sub">
@@ -290,10 +293,23 @@ def _inject_css():
     section[data-testid="stSidebar"] { display: none; }
     .block-container {
         max-width: 1100px;
-        padding: 0 1.25rem 3rem;
+        padding: 0 0 3rem;
+    }
+    /* Re-add side padding for everything EXCEPT the banner */
+    .hero, .stats-bar, .steps-row, .features-grid,
+    .pricing-row, .auth-cta-section, .footer,
+    .section-title, .cta-row, .pricing-cta-row {
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
+        box-sizing: border-box;
     }
     @media (max-width: 640px) {
-        .block-container { padding: 0 0.75rem 2rem; }
+        .hero, .stats-bar, .steps-row, .features-grid,
+        .pricing-row, .auth-cta-section, .footer,
+        .section-title, .cta-row, .pricing-cta-row {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
     }
 
     /* ── Animated gradient text ── */
@@ -303,21 +319,32 @@ def _inject_css():
         100% { background-position: 0% 50%; }
     }
 
-    /* ── Logo / Hero ── */
-    .hero {
-        text-align: center;
-        padding: 2.5rem 1rem 1.5rem;
+    /* ── Banner ── */
+    .banner-wrap {
+        width: 100%;
+        margin: 0 0 0.5rem;
+        line-height: 0;
+    }
+    .hero-banner {
+        display: block;
+        width: 100%;
+        max-height: 280px;
+        object-fit: cover;
+        object-position: center;
+        border-radius: 0 0 16px 16px;
     }
     .hero-logo {
         display: block;
-        margin: 0 auto 1.5rem;
+        margin: 1.5rem auto 0.5rem;
         width: clamp(120px, 28vw, 220px);
         height: auto;
         object-fit: contain;
     }
-    .hero-logo-emoji {
-        font-size: clamp(3rem, 10vw, 5rem);
-        margin-bottom: 1rem;
+
+    /* ── Hero ── */
+    .hero {
+        text-align: center;
+        padding: 1.5rem 1rem 1.5rem;
     }
     .hero-badge {
         display: inline-block;
