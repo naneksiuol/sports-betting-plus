@@ -51,6 +51,8 @@ def show_auth_page():
 
         if mode == "login":
             _show_login()
+        elif mode == "forgot_password":
+            _show_forgot_password()
         else:
             _show_signup()
 
@@ -84,6 +86,10 @@ def _show_login():
                     st.rerun()
                 else:
                     st.error(err)
+
+    if st.button("Forgot password?", key="forgot_pw"):
+        st.session_state["auth_mode"] = "forgot_password"
+        st.rerun()
 
     st.markdown("<div class='guest-link'>", unsafe_allow_html=True)
     if st.button("Skip for now — browse free props →", key="guest_login"):
@@ -126,9 +132,29 @@ def _show_signup():
                 with st.spinner("Creating account..."):
                     ok, err = auth.signup(email, password, name)
                 if ok:
-                    st.success("✅ Account created! You can now log in.")
-                    st.session_state["auth_mode"] = "login"
-                    st.rerun()
+                    # Auto-login immediately after signup
+                    with st.spinner("Logging you in..."):
+                        login_ok, login_err = auth.login(email, password)
+                    if login_ok:
+                        st.session_state.pop("auth_mode", None)
+                        # If user came from a paid tier CTA, redirect to Stripe checkout
+                        pending_tier = st.session_state.pop("pending_tier", None)
+                        if pending_tier and pending_tier != "free":
+                            import stripe_payments
+                            user = auth.get_user()
+                            if user:
+                                url = stripe_payments.create_checkout_session(
+                                    user["id"], user["email"], pending_tier
+                                )
+                                if url:
+                                    import streamlit.components.v1 as _c
+                                    _c.html(f'<script>window.top.location.href = "{url}";</script>', height=0)
+                                    return
+                        st.rerun()
+                    else:
+                        st.success("✅ Account created! Please check your email then log in.")
+                        st.session_state["auth_mode"] = "login"
+                        st.rerun()
                 else:
                     st.error(err)
 
@@ -285,6 +311,32 @@ def _inject_css():
     """, unsafe_allow_html=True)
 
 
+def _show_forgot_password():
+    if st.button("← Back", key="back_forgot"):
+        st.session_state["auth_mode"] = "login"
+        st.rerun()
+
+    st.markdown("### 🔐 Reset Password")
+    st.markdown("Enter your email and we'll send you a password reset link.")
+
+    with st.form("forgot_pw_form"):
+        email = st.text_input("Email", placeholder="you@example.com")
+        submitted = st.form_submit_button("Send Reset Link", use_container_width=True, type="primary")
+        if submitted:
+            if not email:
+                st.error("Please enter your email address.")
+            else:
+                try:
+                    client = auth.get_client()
+                    client.auth.reset_password_email(
+                        email,
+                        options={"redirect_to": __import__("os").environ.get("OAUTH_REDIRECT_URL", "http://localhost:8501")},
+                    )
+                    st.success("✅ Reset link sent! Check your inbox.")
+                except Exception as e:
+                    st.error(f"Could not send reset email: {e}")
+
+
 def show_upgrade_modal(required_tier: str = "standard", key: str = ""):
     """Show an upgrade prompt when a gated feature is accessed."""
     from tiers import TIERS
@@ -307,7 +359,8 @@ def show_upgrade_modal(required_tier: str = "standard", key: str = ""):
             user["id"], user["email"], required_tier
         )
         if url:
-            st.markdown(f'<script>window.location.href = "{url}";</script>', unsafe_allow_html=True)
+            import streamlit.components.v1 as _c
+            _c.html(f'<script>window.top.location.href = "{url}";</script>', height=0)
 
 
 def show_user_menu():
@@ -333,7 +386,8 @@ def show_user_menu():
                 import stripe_payments
                 url = stripe_payments.create_checkout_session(user["id"], user["email"], next_tier)
                 if url:
-                    st.markdown(f'<script>window.location.href = "{url}";</script>', unsafe_allow_html=True)
+                    import streamlit.components.v1 as _c
+                    _c.html(f'<script>window.top.location.href = "{url}";</script>', height=0)
         if st.button("Log Out", use_container_width=True, key="sidebar_logout"):
             auth.logout()
             st.rerun()

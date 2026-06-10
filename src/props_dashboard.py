@@ -590,9 +590,10 @@ def render_bet_tracker():
                                 sharp_odds_val = match["consensus_odds"]
                     except Exception:
                         pass
+                    _edge_val = (win_prob / 100 - (100 / (100 + abs(odds)) if odds < 0 else odds / (100 + odds))) if win_prob else None
                     add_bet(sport, player, prop, line, int(odds), stake, book, notes,
                             sharp_odds=sharp_odds_val, fair_est=win_prob/100,
-                            is_parlay=is_parlay_bet)
+                            is_parlay=is_parlay_bet, edge=_edge_val)
                     def _american_to_dec(o):
                         return (o/100+1) if o > 0 else (100/abs(o)+1)
                     clv_msg = f" | Opening CLV: {((1/_american_to_dec(sharp_odds_val))-(1/_american_to_dec(int(odds))))*100:+.1f}% vs sharp" if sharp_odds_val else ""
@@ -1094,9 +1095,14 @@ def render_bet_tracker():
                         return (odds / 100) + 1
                     elif odds <= -100:
                         return (100 / abs(odds)) + 1
-                    return 1.0
+                    else:
+                        return 1.0  # truly unknown odds
 
-                _STARTING_BK = 1000.0
+                _STARTING_BK = float(
+                    st.session_state.get("bankroll_input") or
+                    st.session_state.get("settings", {}).get("starting_bankroll") or
+                    1000.0
+                )
                 _bk = _STARTING_BK
                 _bk_rows = []
                 for _b in _graded:
@@ -1851,7 +1857,8 @@ def render_sport_tab(sport: str, use_live: bool):
                 with st.spinner("Asking Groq..."):
                     try:
                         summary = run_ai_summary(stats)
-                        st.markdown(f'<div class="ai-box">{summary}</div>', unsafe_allow_html=True)
+                        import html as _html
+                        st.markdown(f'<div class="ai-box">{_html.escape(summary)}</div>', unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"AI error: {e}")
 

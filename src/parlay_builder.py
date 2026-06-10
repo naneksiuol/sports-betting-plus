@@ -285,7 +285,7 @@ def _independence_penalty(legs: list[dict]) -> float:
 
         # Penalty = how much we over-count EV by assuming independence
         ratio = product_joint / copula_joint
-        return min(max(ratio, 0.1), 1.0)
+        return min(max(ratio, 0.2), 1.0)
 
     except Exception:
         # Fallback: 15% flat penalty per correlated pair
