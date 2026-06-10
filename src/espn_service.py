@@ -3,6 +3,10 @@ ESPN public API service — injuries, news, scores, and prop grading.
 No API key required.
 """
 
+# ESPN public API — unofficial endpoint, no key required.
+# Grade data only; do not use for financial decisions.
+_ESPN_DISCLAIMER = "Data from ESPN public scoreboard API (unofficial)"
+
 import re
 import time
 import unicodedata
@@ -30,6 +34,10 @@ _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 # ---------------------------------------------------------------------------
 
 _cache: dict = {}
+
+# Tracks whether recent ESPN calls have succeeded (used by get_espn_status).
+# None = no calls yet, True = last call ok, False = last call failed.
+_last_call_ok: Optional[bool] = None
 
 
 def _cache_get(key: str, ttl: int):
@@ -180,12 +188,25 @@ def _slug(sport: str) -> Optional[str]:
 
 
 def _get(url: str, params: dict = None) -> Optional[dict]:
-    try:
-        r = requests.get(url, params=params, timeout=5)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
+    global _last_call_ok
+    last_exc = None
+    for attempt in range(2):
+        try:
+            r = requests.get(url, params=params, timeout=8)
+            r.raise_for_status()
+            _last_call_ok = True
+            return r.json()
+        except requests.exceptions.HTTPError:
+            # 4xx/5xx — do not retry
+            _last_call_ok = False
+            return None
+        except Exception as exc:
+            # Network-level errors — retry after delay
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(1)
+    _last_call_ok = False
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -546,3 +567,20 @@ def grade_from_espn(
 
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# 6. get_espn_status
+# ---------------------------------------------------------------------------
+
+def get_espn_status() -> str:
+    """
+    Returns the current health status of the ESPN API connection.
+
+    "ok"           — at least one recent call succeeded.
+    "degraded"     — the most recent call failed (network error or HTTP error).
+    "unconfigured" — no calls have been made yet this session.
+    """
+    if _last_call_ok is None:
+        return "unconfigured"
+    return "ok" if _last_call_ok else "degraded"
