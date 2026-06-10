@@ -3799,60 +3799,16 @@ def render_leaderboard():
     try:
         if _SUPABASE_CONFIGURED:
             from supabase import create_client as _sc2
-            _sb2 = _sc2(
-                os.environ.get("SUPABASE_URL", ""),
-                os.environ.get("SUPABASE_SERVICE_KEY", ""),
-            )
-            # Get opted-in profiles
-            profiles_resp = (
-                _sb2.table("profiles")
-                .select("id, leaderboard_handle")
-                .eq("leaderboard_opt_in", True)
-                .not_.is_("leaderboard_handle", "null")
-                .execute()
-            )
-            opted_in = {p["id"]: p["leaderboard_handle"] for p in (profiles_resp.data or [])}
-
-            if opted_in:
-                # Fetch settled bets for opted-in users with CLV data
-                bets_resp = (
-                    _sb2.table("bets")
-                    .select("user_id, clv, opening_clv, result, stake")
-                    .in_("user_id", list(opted_in.keys()))
-                    .in_("result", ["win", "loss", "push"])
-                    .execute()
-                )
-                # Aggregate per user
-                from collections import defaultdict
-                agg: dict = defaultdict(lambda: {
-                    "clv_vals": [], "wins": 0, "losses": 0, "total_staked": 0.0
+            _sb2 = _sc2(os.environ.get("SUPABASE_URL",""), os.environ.get("SUPABASE_ANON_KEY",""))
+            resp = _sb2.table("clv_leaderboard").select("*").execute()
+            for r in (resp.data or []):
+                rows.append({
+                    "Handle":   r["handle"],
+                    "Avg CLV":  float(r.get("avg_clv") or 0),
+                    "CLV Bets": int(r.get("clv_bets") or 0),
+                    "Win Rate": float(r.get("win_rate") or 0),
                 })
-                for b in (bets_resp.data or []):
-                    uid_b = b["user_id"]
-                    clv = b.get("clv") if b.get("clv") is not None else b.get("opening_clv")
-                    if clv is not None:
-                        agg[uid_b]["clv_vals"].append(float(clv))
-                    if b.get("result") == "win":
-                        agg[uid_b]["wins"] += 1
-                    elif b.get("result") == "loss":
-                        agg[uid_b]["losses"] += 1
-                    agg[uid_b]["total_staked"] += float(b.get("stake") or 0)
-
-                for uid_b, d in agg.items():
-                    if len(d["clv_vals"]) < 10:
-                        continue  # require at least 10 bets with CLV to appear
-                    avg_clv = round(sum(d["clv_vals"]) / len(d["clv_vals"]), 2)
-                    decisive = d["wins"] + d["losses"]
-                    win_rate = round(100 * d["wins"] / decisive, 1) if decisive > 0 else 0.0
-                    rows.append({
-                        "Handle":      opted_in[uid_b],
-                        "Avg CLV":     avg_clv,
-                        "CLV Bets":    len(d["clv_vals"]),
-                        "Win Rate":    win_rate,
-                        "Total Staked": round(d["total_staked"], 0),
-                    })
-
-                rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
+            rows.sort(key=lambda r: r["Avg CLV"], reverse=True)
     except Exception:
         pass
 
