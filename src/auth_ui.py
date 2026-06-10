@@ -161,8 +161,8 @@ def _oauth_buttons(suffix: str = ""):
                      use_container_width=True, type="secondary"):
             try:
                 url = auth.get_google_oauth_url()
-                st.markdown(f'<script>window.location.href="{url}";</script>',
-                            unsafe_allow_html=True)
+                st.session_state["_oauth_redirect"] = url
+                st.rerun()
             except Exception as e:
                 st.error(f"Google login unavailable: {e}")
 
@@ -179,10 +179,19 @@ def _oauth_buttons(suffix: str = ""):
                      use_container_width=True, type="secondary"):
             try:
                 url = auth.get_apple_oauth_url()
-                st.markdown(f'<script>window.location.href="{url}";</script>',
-                            unsafe_allow_html=True)
+                st.session_state["_oauth_redirect"] = url
+                st.rerun()
             except Exception as e:
                 st.error(f"Apple login unavailable: {e}")
+
+    # Execute redirect after rerun (outside button block so it fires reliably)
+    redirect_url = st.session_state.pop("_oauth_redirect", None)
+    if redirect_url:
+        import streamlit.components.v1 as _components
+        _components.html(
+            f'<script>window.top.location.href = "{redirect_url}";</script>',
+            height=0,
+        )
 
 
 def _inject_css():
