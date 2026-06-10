@@ -616,8 +616,9 @@ def render_bet_tracker():
     st.caption("Log your bets, track results, and measure if the system is actually profitable.")
 
     # Load once per render and pass through — avoids 5+ repeated disk reads
-    _all_bets_cache = load_bets()
-    stats = get_stats()
+    _uid = st.session_state.get("user_id")
+    _all_bets_cache = load_bets(user_id=_uid)
+    stats = get_stats(user_id=_uid)
 
     # ── KPIs ──
     k1, k2, k3, k4, k5 = st.columns(5)
@@ -651,7 +652,8 @@ def render_bet_tracker():
             _bankroll = st.session_state.get("bankroll_input", 1000.0)
             _kmult = st.session_state.get("kelly_mult", 0.25)
             # Wire real CLV history into dynamic Kelly — stake scales with proven track record
-            _clv_avg = get_clv_avg(n_recent=30)
+            _uid = st.session_state.get("user_id")
+            _clv_avg = get_clv_avg(n_recent=30, user_id=_uid)
             _rec = recommended_stake(win_prob / 100, float(odds), _bankroll, _kmult, clv_avg=_clv_avg)
             _clv_note = f" | CLV avg: {_clv_avg:+.1f}% (last 30)" if _clv_avg is not None else " | CLV: no history yet"
             st.caption(f"💡 Kelly suggestion: **${_rec['stake']:.2f}** ({_rec['recommended_pct']:.1f}% · {_rec['kelly_multiplier']:.0%} Kelly) | EV: ${_rec['ev_on_stake']:+.2f}{_clv_note}")
@@ -1287,12 +1289,13 @@ def render_clv_tab():
     st.markdown("## 📈 CLV & ROI Analysis")
     st.caption("Closing Line Value (CLV) is the gold standard for measuring edge quality. Consistent positive CLV = real edge, not luck.")
 
-    bets = load_bets()
+    _uid = st.session_state.get("user_id")
+    bets = load_bets(user_id=_uid)
     if not bets:
         st.info("📭 No bets logged yet. Start logging bets in the Tracker tab to see CLV analysis.")
         return
 
-    stats = get_stats()
+    stats = get_stats(user_id=_uid)
 
     # ── CLV Hero Metrics ──────────────────────────────────────────────────────
     clv_bets = [b for b in bets if b.get("clv") is not None]
@@ -1816,7 +1819,8 @@ def render_sport_tab(sport: str, use_live: bool):
     st.session_state[f"edge_{sport}"] = edge_threshold
 
     # ── Pre-compute confidence scores for all filtered rows ──────────────────
-    _clv_avg_global = get_clv_avg(n_recent=30)  # shared CLV history for all rows
+    _uid = st.session_state.get("user_id")
+    _clv_avg_global = get_clv_avg(n_recent=30, user_id=_uid)  # shared CLV history for all rows
 
     def _row_confidence(row) -> int:
         return edge_confidence_score(
@@ -2285,7 +2289,8 @@ def render_sport_tab(sport: str, use_live: bool):
                     for _k, parlay in report.get("parlays", {}).items():
                         for leg in parlay.get("legs", []):
                             leg["prop_label"] = market_labels.get(leg.get("market",""), leg.get("market",""))
-                    stats = get_stats()
+                    _uid = st.session_state.get("user_id")
+                    stats = get_stats(user_id=_uid)
                     record = {"wins": stats["wins"], "losses": stats["losses"], "roi": stats["roi"]}
                     sent = 0
                     if dc_ready:
@@ -3609,7 +3614,8 @@ def main():
                 with st.spinner("Optimizing…"):
                     try:
                         _kp_df, _ = load_data(_kp_sport, use_live)
-                        _kp_clv = get_clv_avg(n_recent=30)
+                        _uid = st.session_state.get("user_id")
+                        _kp_clv = get_clv_avg(n_recent=30, user_id=_uid)
                         if _kp_df is not None and not _kp_df.empty:
                             _kp_plays = [
                                 r.to_dict()
@@ -3648,7 +3654,8 @@ def main():
                      help="Cross-sport: find the top 3 highest-confidence props right now and log them to tracker"):
             with st.spinner("Scanning all sports for today's best plays…"):
                 from bet_tracker import add_bet
-                _clv_avg_b3 = get_clv_avg(n_recent=30)
+                _uid = st.session_state.get("user_id")
+                _clv_avg_b3 = get_clv_avg(n_recent=30, user_id=_uid)
                 _all_candidates = []
                 for _sport in [s for s, c in SPORTS_CONFIG.items() if c.get("status") == "live"]:
                     try:
