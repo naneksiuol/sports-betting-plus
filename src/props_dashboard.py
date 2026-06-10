@@ -2325,10 +2325,14 @@ def render_sport_tab(sport: str, use_live: bool):
                 _now - st.session_state.get(_parlay_ts_key, 0) > 300):
             with st.spinner("⚡ Building parlays & SGPs…"):
                 st.session_state[_parlay_key] = build_parlay_report(
-                    filtered, stake=stake, full_df=sgp_pool
+                    filtered, stake=stake, full_df=sgp_pool, sport=sport
                 )
                 st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
+
+        _gf = report.get("games_filtered", 0)
+        if _gf:
+            st.info(f"⏱️ **{_gf} game{'s' if _gf > 1 else ''} excluded** — already past the 50% mark. Props from those games are hidden to keep parlay legs betable.")
 
         st.markdown("#### 🏆 Top 20 Best Edge Candidates")
         st.caption("Top 5 per prop market within -300 to +300 odds — sorted by edge, best value first.")

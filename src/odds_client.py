@@ -178,6 +178,7 @@ def _fetch_event_odds(event: dict, sport_key: str, markets_str: str, api_key: st
     home = event.get("home_team", "")
     away = event.get("away_team", "")
     matchup = f"{away} @ {home}"
+    commence_time = event.get("commence_time", "")  # ISO-8601 UTC
     try:
         resp = requests.get(
             f"{ODDS_API_BASE}/sports/{sport_key}/events/{event_id}/odds",
@@ -256,6 +257,7 @@ def _fetch_event_odds(event: dict, sport_key: str, markets_str: str, api_key: st
             "all_over_odds": best_over_all,  # best odds any book (for fair prob)
             "under_odds": (sum(data_d["under_list"]) / len(data_d["under_list"])) if data_d["under_list"] else None,
             "book_implied": round(_american_to_implied(best_fd_dk_over), 4),
+            "game_start": commence_time,     # ISO-8601 UTC — used for in-game filtering
         })
     return rows
 
@@ -346,12 +348,14 @@ def _fetch_props_for_sport(sport_key: str, markets: list[str], max_events: int =
             "book_implied": round(best_imp, 4),
             "fair_est": round(fair, 4),
             "edge": round(fair - best_imp, 4),
+            "game_start": g["game_start"].iloc[0] if "game_start" in g.columns else "",
         })
     consensus = pd.DataFrame(records)
 
     if consensus.empty:
         return consensus
-    return consensus[["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge"]]
+    cols = ["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge", "game_start"]
+    return consensus[[c for c in cols if c in consensus.columns]]
 
 
 def get_props(sport: str) -> pd.DataFrame:

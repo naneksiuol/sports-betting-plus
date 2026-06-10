@@ -18,6 +18,7 @@ Selection logic:
 import pandas as pd
 import math
 from itertools import combinations
+from datetime import datetime, timezone
 
 # ── Correlation groups: markets that are statistically correlated ─────────────
 # Picking two from the same group for the same player is penalised / blocked.
@@ -80,6 +81,49 @@ MARKET_BUCKETS = {
     "player_blocked_shots":  "nhl_block",
     "player_hits":           "nhl_hit",
 }
+
+
+# Expected game durations in minutes per sport — generous to cover overtime/delays.
+# 50% threshold = half this value.
+_GAME_DURATION_MINS = {
+    "MLB":   200,  # ~3h20m
+    "NBA":   150,  # ~2h30m
+    "WNBA":  130,  # ~2h10m
+    "NHL":   150,  # ~2h30m
+    "NFL":   210,  # ~3h30m
+    "NCAAF": 210,
+}
+_DEFAULT_DURATION = 180  # fallback for unknown sports
+
+
+def filter_live_games(df: pd.DataFrame, sport: str = "") -> pd.DataFrame:
+    """
+    Remove props from games that are >50% complete.
+
+    A game is considered >50% complete when:
+      elapsed_minutes > 0.5 * expected_duration_for_sport
+
+    Rows without a 'game_start' column or with empty/invalid values are kept
+    (fail-open: show the prop if we can't determine game state).
+    """
+    if df.empty or "game_start" not in df.columns:
+        return df
+
+    now = datetime.now(timezone.utc)
+    half_duration = (_GAME_DURATION_MINS.get(sport, _DEFAULT_DURATION) / 2) * 60  # seconds
+
+    def _keep(game_start_str: str) -> bool:
+        if not game_start_str:
+            return True
+        try:
+            start = datetime.fromisoformat(game_start_str.replace("Z", "+00:00"))
+            elapsed = (now - start).total_seconds()
+            return elapsed < half_duration  # keep if less than 50% elapsed
+        except Exception:
+            return True  # can't parse — keep it
+
+    mask = df["game_start"].apply(_keep)
+    return df[mask].copy()
 
 
 def american_to_decimal(odds: float) -> float:
@@ -489,16 +533,32 @@ def build_diverse_sgps(
 # ── Full Report ───────────────────────────────────────────────────────────────
 
 def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
-                        full_df: pd.DataFrame | None = None) -> dict:
+                        full_df: pd.DataFrame | None = None,
+                        sport: str = "") -> dict:
     """
     Full parlay report.
     df       — filtered props (used for multi-game parlay leg selection)
     full_df  — all props before edge filter (used for SGP combo generation so
                games with thin-but-playable lines still appear in SGPs)
+    sport    — used for game-progress filtering (50% elapsed → excluded)
     """
     if df.empty or "over_odds" not in df.columns:
         return {"top10": [], "parlays": {}, "sgps": [], "diverse_sgps": {},
-                "stake": stake, "pos_edge_games": 0, "total_games": 0}
+                "stake": stake, "pos_edge_games": 0, "total_games": 0,
+                "games_filtered": 0}
+
+    # Remove props from games already >50% complete — no value in late-game parlays
+    pre_filter_games = int(df["team"].nunique()) if not df.empty else 0
+    df = filter_live_games(df, sport)
+    if full_df is not None and not full_df.empty:
+        full_df = filter_live_games(full_df, sport)
+    games_filtered = pre_filter_games - (int(df["team"].nunique()) if not df.empty else 0)
+
+    if df.empty or "over_odds" not in df.columns:
+        return {"top10": [], "parlays": {}, "sgps": [], "diverse_sgps": {},
+                "stake": stake, "pos_edge_games": 0, "total_games": 0,
+                "games_filtered": games_filtered}
+
     sgp_source = full_df if (full_df is not None and not full_df.empty) else df
     top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=20, per_market=5)
 
@@ -534,4 +594,5 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
         "stake":          stake,
         "pos_edge_games": pos_edge_games,
         "total_games":    int(df["team"].nunique()) if not df.empty else 0,
+        "games_filtered": games_filtered,
     }
