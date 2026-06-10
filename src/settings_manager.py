@@ -1,3 +1,4 @@
+from __future__ import annotations
 """settings_manager.py — Load/save bankroll & unit-size settings.
 
 Persistence strategy:

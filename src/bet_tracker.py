@@ -2,6 +2,7 @@
 Bet tracker — persists bets to Supabase `bets` table (RLS-protected).
 Falls back to local data/bets.json when Supabase is not configured (dev/offline).
 """
+from __future__ import annotations
 
 import os
 import json
@@ -205,7 +206,6 @@ def load_bets(user_id: str = None) -> list[dict]:
             .select("*")
             .eq("user_id", uid)
             .order("date", desc=True)
-            .order("time", desc=True)
             .execute()
         )
         return [_row_to_bet(r) for r in (resp.data or [])]
