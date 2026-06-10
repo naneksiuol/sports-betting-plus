@@ -97,13 +97,61 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     print(f"[webhook] WARNING: could not save stripe IDs for {user_id}: {exc}")
 
+        elif etype == "customer.subscription.created":
+            meta = data.get("metadata", {})
+            user_id = meta.get("user_id")
+            if user_id:
+                status = data.get("status")
+                if status in ("active", "trialing"):
+                    tier = meta.get("tier", "standard")
+                elif status in ("canceled", "unpaid", "past_due", "incomplete_expired", "paused"):
+                    tier = "free"
+                else:
+                    tier = meta.get("tier", "standard")
+                _update_tier(user_id, tier)
+                try:
+                    if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+                        client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+                        client.table("profiles").update({
+                            "stripe_customer_id": data.get("customer"),
+                            "stripe_subscription_id": data.get("id"),
+                        }).eq("id", user_id).execute()
+                        print(f"[webhook] Saved stripe_customer_id/stripe_subscription_id for {user_id}")
+                except Exception as exc:
+                    print(f"[webhook] WARNING: could not save stripe IDs for {user_id}: {exc}")
+
         elif etype == "customer.subscription.updated":
             meta = data.get("metadata", {})
             user_id = meta.get("user_id")
             if user_id:
                 status = data.get("status")
-                tier = "free" if status in ("canceled", "unpaid", "past_due") else meta.get("tier", "standard")
+                if status in ("active", "trialing"):
+                    tier = meta.get("tier", "standard")
+                elif status in ("canceled", "unpaid", "past_due", "incomplete_expired", "paused"):
+                    tier = "free"
+                else:
+                    tier = meta.get("tier", "standard")
                 _update_tier(user_id, tier)
+
+        elif etype == "invoice.payment_failed":
+            sub_id = data.get("subscription")
+            customer_id = data.get("customer")
+            if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+                try:
+                    client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+                    if sub_id:
+                        rows = client.table("profiles").select("id").eq("stripe_subscription_id", sub_id).execute()
+                    elif customer_id:
+                        rows = client.table("profiles").select("id").eq("stripe_customer_id", customer_id).execute()
+                    else:
+                        rows = None
+                    if rows and rows.data:
+                        user_id = rows.data[0]["id"]
+                        _update_tier(user_id, "past_due")
+                    else:
+                        print(f"[webhook] invoice.payment_failed: no profile found for sub={sub_id} customer={customer_id}")
+                except Exception as exc:
+                    print(f"[webhook] WARNING: could not handle invoice.payment_failed: {exc}")
 
         elif etype == "customer.subscription.deleted":
             meta = data.get("metadata", {})
