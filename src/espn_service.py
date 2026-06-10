@@ -477,6 +477,8 @@ def grade_from_espn(
     try:
         if game_date is None:
             game_date = datetime.now().strftime("%Y%m%d")
+        # Normalize to YYYYMMDD — ESPN API rejects YYYY-MM-DD format
+        game_date = game_date.replace("-", "")
 
         # 1. Find the game that includes this player
         scores = get_scores(sport, game_date)

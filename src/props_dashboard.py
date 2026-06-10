@@ -608,7 +608,7 @@ def render_bet_tracker():
     with col_list:
         st.markdown('<div class="section-header">📋 All Bets</div>', unsafe_allow_html=True)
 
-        bets = load_bets()
+        bets = _all_bets_cache
         if not bets:
             st.info("No bets logged yet. Use the form to log your first bet.")
         else:
@@ -635,12 +635,13 @@ def render_bet_tracker():
                     "win": "🟢 WIN",
                     "loss": "🔴 LOSS",
                     "push": "⚪ PUSH",
+                    "void": "↩️ VOID",
                     "pending": "🟡 PENDING"
                 }.get(result, "🟡 PENDING")
 
                 profit_str = f"${bet['profit']:+.2f}" if bet["profit"] is not None else "—"
-                # Show best available CLV info
-                clv_display = bet.get("clv") or bet.get("opening_clv")
+                # Show best available CLV info — explicit None check avoids dropping 0.0 CLV
+                clv_display = bet.get("clv") if bet.get("clv") is not None else bet.get("opening_clv")
                 clv_label = "CLV" if bet.get("clv") else "Opening CLV"
                 clv_str = f"{clv_label}: {clv_display:+.2f}%" if clv_display is not None else ""
 
@@ -698,7 +699,7 @@ def render_bet_tracker():
         "CLV = (1/bet_decimal) − (1/closing_decimal)"
     )
 
-    all_bets_for_clv = load_bets()
+    all_bets_for_clv = _all_bets_cache
     clv_data = clv_summary(all_bets_for_clv)
 
     if clv_data["n_with_clv"] == 0:
@@ -747,7 +748,7 @@ def render_bet_tracker():
     st.markdown("### 🤖 Auto-Grade Pending Bets")
     st.caption("Grades MLB, NBA, WNBA, and NHL bets automatically using free public stat APIs. Runs nightly via Task Scheduler (run setup_scheduler.bat to schedule).")
 
-    pending_bets = [b for b in load_bets() if b["result"] == "pending"]
+    pending_bets = [b for b in _all_bets_cache if b["result"] == "pending"]
     past_pending_dates = sorted(set(
         b["date"] for b in pending_bets
         if b["date"] < datetime.now().strftime("%Y-%m-%d")
@@ -1043,7 +1044,7 @@ def render_bet_tracker():
         # ── CLV Tracking ──────────────────────────────────────────────────────
         st.divider()
         with st.expander("📐 CLV Tracking by Sport / Market / Book", expanded=False):
-            _all_bets_clv = load_bets()
+            _all_bets_clv = _all_bets_cache
             _clv_bets = [
                 b for b in _all_bets_clv
                 if (b.get("clv") if b.get("clv") is not None else b.get("opening_clv")) is not None
@@ -1812,59 +1813,58 @@ def render_sport_tab(sport: str, use_live: bool):
     st.divider()
 
     # ── Game Lines ──
-    if _tiers and not _tiers.can(_current_tier, "game_lines"):
-        with st.expander("📋 Today's Game Lines (Moneyline · Spread · Total)", expanded=False):
+    with st.expander("📋 Today's Game Lines (Moneyline · Spread · Total)", expanded=False):
+        if _tiers and not _tiers.can(_current_tier, "game_lines"):
             import auth_ui as _aui
             _aui.show_upgrade_modal("standard", key=f"game_lines_{sport}")
-        return
-    with st.expander("📋 Today's Game Lines (Moneyline · Spread · Total)", expanded=False):
-        try:
-            from odds_client import get_game_lines
-            gl = _get_game_lines_cached(sport)
-        except Exception:
-            gl = pd.DataFrame()
-
-        if gl.empty:
-            st.info("Game lines unavailable right now.")
         else:
-            def _fmt_ml(v):
-                if v is None: return "—"
-                return f"+{int(v)}" if v > 0 else str(int(v))
-            def _fmt_spread(line, odds):
-                if line is None: return "—"
-                sign = "+" if line > 0 else ""
-                odds_str = f" ({_fmt_ml(odds)})" if odds else ""
-                return f"{sign}{line}{odds_str}"
-            def _fmt_total(total, over, under):
-                if total is None: return "—"
-                o = _fmt_ml(over) if over else "—"
-                u = _fmt_ml(under) if under else "—"
-                return f"O/U {total}  (O {o} / U {u})"
-            def _fmt_pct(v):
-                return f"{int(v)}%" if v is not None and pd.notna(v) else None
+            try:
+                from odds_client import get_game_lines
+                gl = _get_game_lines_cached(sport)
+            except Exception:
+                gl = pd.DataFrame()
 
-            has_team_totals = "away_team_total" in gl.columns and gl["away_team_total"].notna().any()
-            has_public = "ml_away_public" in gl.columns and gl["ml_away_public"].notna().any()
+            if gl.empty:
+                st.info("Game lines unavailable right now.")
+            else:
+                def _fmt_ml(v):
+                    if v is None: return "—"
+                    return f"+{int(v)}" if v > 0 else str(int(v))
+                def _fmt_spread(line, odds):
+                    if line is None: return "—"
+                    sign = "+" if line > 0 else ""
+                    odds_str = f" ({_fmt_ml(odds)})" if odds else ""
+                    return f"{sign}{line}{odds_str}"
+                def _fmt_total(total, over, under):
+                    if total is None: return "—"
+                    o = _fmt_ml(over) if over else "—"
+                    u = _fmt_ml(under) if under else "—"
+                    return f"O/U {total}  (O {o} / U {u})"
+                def _fmt_pct(v):
+                    return f"{int(v)}%" if v is not None and pd.notna(v) else None
 
-            for _, g in gl.iterrows():
-                c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
-                c1.markdown(f"**{g['matchup']}**  \n🕐 {g.get('time','') or '—'} UTC")
-                # Moneyline + optional public %
-                away_pub = _fmt_pct(g.get("ml_away_public")) if has_public else None
-                home_pub = _fmt_pct(g.get("ml_home_public")) if has_public else None
-                away_pub_str = f" _{away_pub} public_" if away_pub else ""
-                home_pub_str = f" _{home_pub} public_" if home_pub else ""
-                c2.markdown(f"**ML**  \n{g['away']}: {_fmt_ml(g['away_ml'])}{away_pub_str}  \n{g['home']}: {_fmt_ml(g['home_ml'])}{home_pub_str}")
-                c3.markdown(f"**Spread**  \n{g['away']}: {_fmt_spread(g['away_spread'], g['away_spread_odds'])}  \n{g['home']}: {_fmt_spread(g['home_spread'], g['home_spread_odds'])}")
-                # Total + optional team totals
-                if has_team_totals and g.get("away_team_total") and g.get("home_team_total"):
-                    c4.markdown(
-                        f"**Total**  \n{_fmt_total(g['total'], g['over_odds'], g['under_odds'])}  \n"
-                        f"**Team Totals:** {g['away']} {g['away_team_total']} · {g['home']} {g['home_team_total']}"
-                    )
-                else:
-                    c4.markdown(f"**Total**  \n{_fmt_total(g['total'], g['over_odds'], g['under_odds'])}")
-                st.divider()
+                has_team_totals = "away_team_total" in gl.columns and gl["away_team_total"].notna().any()
+                has_public = "ml_away_public" in gl.columns and gl["ml_away_public"].notna().any()
+
+                for _, g in gl.iterrows():
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
+                    c1.markdown(f"**{g['matchup']}**  \n🕐 {g.get('time','') or '—'} UTC")
+                    # Moneyline + optional public %
+                    away_pub = _fmt_pct(g.get("ml_away_public")) if has_public else None
+                    home_pub = _fmt_pct(g.get("ml_home_public")) if has_public else None
+                    away_pub_str = f" _{away_pub} public_" if away_pub else ""
+                    home_pub_str = f" _{home_pub} public_" if home_pub else ""
+                    c2.markdown(f"**ML**  \n{g['away']}: {_fmt_ml(g['away_ml'])}{away_pub_str}  \n{g['home']}: {_fmt_ml(g['home_ml'])}{home_pub_str}")
+                    c3.markdown(f"**Spread**  \n{g['away']}: {_fmt_spread(g['away_spread'], g['away_spread_odds'])}  \n{g['home']}: {_fmt_spread(g['home_spread'], g['home_spread_odds'])}")
+                    # Total + optional team totals
+                    if has_team_totals and g.get("away_team_total") and g.get("home_team_total"):
+                        c4.markdown(
+                            f"**Total**  \n{_fmt_total(g['total'], g['over_odds'], g['under_odds'])}  \n"
+                            f"**Team Totals:** {g['away']} {g['away_team_total']} · {g['home']} {g['home_team_total']}"
+                        )
+                    else:
+                        c4.markdown(f"**Total**  \n{_fmt_total(g['total'], g['over_odds'], g['under_odds'])}")
+                    st.divider()
 
     # ── AI Summary ──
     if GROQ_API_KEY and len(filtered) > 0:

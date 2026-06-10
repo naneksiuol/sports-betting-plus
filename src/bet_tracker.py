@@ -1,10 +1,15 @@
 import json
 import uuid
-import fcntl
+import sys
 import tempfile
 import os
 from pathlib import Path
 from datetime import datetime
+
+if sys.platform != "win32":
+    import fcntl
+else:
+    fcntl = None  # type: ignore
 
 BETS_FILE = Path(__file__).parent.parent / "data" / "bets.json"
 _LOCK_FILE = Path(__file__).parent.parent / "data" / ".bets.lock"
@@ -22,20 +27,28 @@ def load_bets() -> list[dict]:
 def save_bets(bets: list[dict]):
     """Atomic write with file lock to prevent concurrent-write corruption."""
     BETS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _LOCK_FILE.touch(exist_ok=True)
-    with open(_LOCK_FILE, "r") as _lf:
-        fcntl.flock(_lf, fcntl.LOCK_EX)
-        try:
-            tmp = tempfile.NamedTemporaryFile(
-                mode="w", dir=BETS_FILE.parent, delete=False, suffix=".tmp"
-            )
-            json.dump(bets, tmp, indent=2)
-            tmp.flush()
-            os.fsync(tmp.fileno())
-            tmp.close()
-            os.replace(tmp.name, BETS_FILE)
-        finally:
-            fcntl.flock(_lf, fcntl.LOCK_UN)
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", dir=BETS_FILE.parent, delete=False, suffix=".tmp"
+    )
+    if fcntl is not None:
+        _LOCK_FILE.touch(exist_ok=True)
+        with open(_LOCK_FILE, "r") as _lf:
+            fcntl.flock(_lf, fcntl.LOCK_EX)
+            try:
+                json.dump(bets, tmp, indent=2)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+                tmp.close()
+                os.replace(tmp.name, BETS_FILE)
+            finally:
+                fcntl.flock(_lf, fcntl.LOCK_UN)
+    else:
+        # Windows: no fcntl, just atomic replace
+        json.dump(bets, tmp, indent=2)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp.close()
+        os.replace(tmp.name, BETS_FILE)
 
 
 def _american_to_dec(odds: float) -> float:

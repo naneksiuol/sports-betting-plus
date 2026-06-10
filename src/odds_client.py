@@ -262,15 +262,28 @@ def _fetch_event_odds(event: dict, sport_key: str, markets_str: str, api_key: st
 
 def _fetch_props_for_sport(sport_key: str, markets: list[str], max_events: int = 10) -> pd.DataFrame:
     """Fetch player props for a sport. All events fetched in parallel."""
+    import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    events_resp = requests.get(
-        f"{ODDS_API_BASE}/sports/{sport_key}/events",
-        params={"apiKey": _api_key()},
-        timeout=10,
-    )
-    events_resp.raise_for_status()
-    events = events_resp.json()
+    last_exc = None
+    for _attempt, _delay in enumerate([0, 2, 4]):
+        if _delay:
+            time.sleep(_delay)
+        try:
+            events_resp = requests.get(
+                f"{ODDS_API_BASE}/sports/{sport_key}/events",
+                params={"apiKey": _api_key()},
+                timeout=10,
+            )
+            events_resp.raise_for_status()
+            events = events_resp.json()
+            break
+        except Exception as exc:
+            last_exc = exc
+    else:
+        import warnings
+        warnings.warn(f"odds_client: events fetch failed for {sport_key} after 3 attempts: {last_exc}")
+        return pd.DataFrame()
     if not events:
         return pd.DataFrame()
 
