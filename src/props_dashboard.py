@@ -1572,7 +1572,8 @@ def render_clv_tab():
 # ── Sport Tab ─────────────────────────────────────────────────────────────────
 def render_sport_tab(sport: str, use_live: bool):
     cfg = SPORTS_CONFIG[sport]
-    market_labels = cfg["market_labels"]
+    from parlay_builder import GAME_LINE_LABELS
+    market_labels = {**cfg["market_labels"], **GAME_LINE_LABELS}
 
     df, data_source = load_data(sport, use_live)
 
@@ -1819,21 +1820,23 @@ def render_sport_tab(sport: str, use_live: bool):
     # raw df is unchanged for charts/SGPs that always show over-side.
     if bet_side == "Under" and "under_edge" in df.columns:
         df_view = df.copy()
-        df_view["edge"]        = df_view["under_edge"].fillna(-1)
-        df_view["over_odds"]   = df_view["under_odds"]
-        df_view["book_implied"]= df_view["under_implied"].fillna(df_view["book_implied"])
-        df_view["fair_est"]    = df_view["under_fair"].fillna(df_view["fair_est"])
-        df_view["_side"]       = "Under"
+        # Drop rows with no under line rather than assigning fake -1 edge
+        _has_under = df_view["under_edge"].notna() & df_view["under_odds"].notna()
+        df_view = df_view[_has_under].copy()
+        df_view["edge"]         = df_view["under_edge"]
+        df_view["over_odds"]    = df_view["under_odds"].fillna(df_view["over_odds"])
+        df_view["book_implied"] = df_view["under_implied"].fillna(df_view["book_implied"])
+        df_view["fair_est"]     = df_view["under_fair"].fillna(df_view["fair_est"])
+        df_view["_side"]        = "Under"
     elif bet_side == "Both" and "under_edge" in df.columns:
-        # Duplicate rows: original rows (over) + under rows with swapped columns
-        df_over  = df.copy(); df_over["_side"]  = "Over"
-        df_under = df.copy()
-        df_under["edge"]        = df_under["under_edge"].fillna(-1)
-        df_under["over_odds"]   = df_under["under_odds"]
-        df_under["book_implied"]= df_under["under_implied"].fillna(df_under["book_implied"])
-        df_under["fair_est"]    = df_under["under_fair"].fillna(df_under["fair_est"])
-        df_under["_side"]       = "Under"
-        df_view = pd.concat([df_over, df_under], ignore_index=True)
+        df_over = df.copy(); df_over["_side"] = "Over"
+        _under_src = df[df["under_edge"].notna() & df["under_odds"].notna()].copy()
+        _under_src["edge"]         = _under_src["under_edge"]
+        _under_src["over_odds"]    = _under_src["under_odds"].fillna(_under_src["over_odds"])
+        _under_src["book_implied"] = _under_src["under_implied"].fillna(_under_src["book_implied"])
+        _under_src["fair_est"]     = _under_src["under_fair"].fillna(_under_src["fair_est"])
+        _under_src["_side"]        = "Under"
+        df_view = pd.concat([df_over, _under_src], ignore_index=True)
     else:
         df_view = df.copy()
         df_view["_side"] = "Over"
@@ -2466,6 +2469,14 @@ def render_sport_tab(sport: str, use_live: bool):
                 st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
 
+        def _ou(leg: dict) -> str:
+            """Return 'U' for under-side game-line legs, 'O' for everything else."""
+            mkt = leg.get("market", "")
+            side = leg.get("_side", "Over")
+            if mkt.endswith("_under") or side == "Under":
+                return "U"
+            return "O"
+
         _gf = report.get("games_filtered", 0)
         if _gf:
             st.info(f"⏱️ **{_gf} game{'s' if _gf > 1 else ''} excluded** — already past the 50% mark. Props from those games are hidden to keep parlay legs betable.")
@@ -2674,7 +2685,7 @@ def render_sport_tab(sport: str, use_live: bool):
       {j}. {leg['player']}{conf}
     </div>
     <div style="color:#94a3b8;font-size:12px;margin-top:2px;">
-      {prop} O{leg.get('line','')}
+      {prop} {_ou(leg)}{leg.get('line','')}
       <span style="color:#a78bfa;font-weight:700;"> {odds_fmt}</span>
       &nbsp;·&nbsp;<span style="color:#64748b;">{leg.get('team','')}</span>
     </div>
@@ -2736,7 +2747,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         add_bet(
                             sport=sport,
                             player=leg["player"],
-                            prop=f"{prop} O{leg.get('line','')} [{n}-leg parlay]",
+                            prop=f"{prop} {_ou(leg)}{leg.get('line','')} [{n}-leg parlay]",
                             line=leg.get("line", 0.5),
                             odds=int(leg["over_odds"]),
                             stake=round(stake / n, 2),
@@ -2751,7 +2762,7 @@ def render_sport_tab(sport: str, use_live: bool):
                 _parlay_lines = "\n".join(
                     f"  {j}. {leg['player']} — "
                     f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
-                    f"O{leg.get('line','')} "
+                    f"{_ou(leg)}{leg.get('line','')} "
                     f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
                     for j, leg in enumerate(p["legs"], 1)
                 )
@@ -2794,7 +2805,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         sl = sharp_map.get(sk, {})
                         add_bet(
                             sport=sport, player=leg["player"],
-                            prop=f"{prop} O{leg.get('line','')} [{n_legs_key}-leg parlay]",
+                            prop=f"{prop} {_ou(leg)}{leg.get('line','')} [{n_legs_key}-leg parlay]",
                             line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
                             stake=round(stake / n_legs_key, 2), book="",
                             notes=f"Auto-logged {n_legs_key}-leg parlay | {pout['american_odds']} combined",
@@ -2812,7 +2823,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         sl = sharp_map.get(sk, {})
                         add_bet(
                             sport=sport, player=leg["player"],
-                            prop=f"{prop} O{leg.get('line','')} [SGP]",
+                            prop=f"{prop} {_ou(leg)}{leg.get('line','')} [SGP]",
                             line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
                             stake=round(stake / n_legs_key, 2), book="",
                             notes=f"Auto-logged SGP {sgp['game']} | {pout['american_odds']} combined",
@@ -2831,7 +2842,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             sl = sharp_map.get(sk, {})
                             add_bet(
                                 sport=sport, player=leg["player"],
-                                prop=f"{prop} O{leg.get('line','')} [SGP combo #{ci}]",
+                                prop=f"{prop} {_ou(leg)}{leg.get('line','')} [SGP combo #{ci}]",
                                 line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
                                 stake=round(stake / n_legs_key, 2), book="",
                                 notes=f"Auto-logged best {n_legs_key}-leg SGP combo #{ci} | {sgp['game']} | {pout['american_odds']}",
@@ -2890,7 +2901,7 @@ def render_sport_tab(sport: str, use_live: bool):
       {j}. {leg['player']}
     </div>
     <div style="color:#94a3b8;font-size:12px;margin-top:2px;">
-      {prop} O{leg.get('line','')}
+      {prop} {_ou(leg)}{leg.get('line','')}
       <span style="color:#a78bfa;font-weight:700;"> {odds_fmt}</span>
       &nbsp;·&nbsp;<span style="color:#64748b;">{leg.get('team','')}</span>
     </div>
@@ -2942,7 +2953,7 @@ def render_sport_tab(sport: str, use_live: bool):
                                     sl = sharp_map.get(sk, {})
                                     add_bet(
                                         sport=sport, player=leg["player"],
-                                        prop=f"{prop} O{leg.get('line','')} [Best SGP #{ci+1}]",
+                                        prop=f"{prop} {_ou(leg)}{leg.get('line','')} [Best SGP #{ci+1}]",
                                         line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
                                         stake=round(stake / n, 2), book="",
                                         notes=f"Auto-logged best {n}-leg SGP #{ci+1} | {sgp['game']} | {amer_fmt}",
@@ -2953,7 +2964,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             _div_lines = "\n".join(
                                 f"  {j}. {leg['player']} — "
                                 f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
-                                f"O{leg.get('line','')} "
+                                f"{_ou(leg)}{leg.get('line','')} "
                                 f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
                                 for j, leg in enumerate(sgp["legs"], 1)
                             )
@@ -3011,7 +3022,7 @@ def render_sport_tab(sport: str, use_live: bool):
       {j}. {leg['player']}
     </div>
     <div style="color:#94a3b8;font-size:12px;margin-top:2px;">
-      {prop} O{leg.get('line','')}
+      {prop} {_ou(leg)}{leg.get('line','')}
       <span style="color:#a78bfa;font-weight:700;"> {odds_fmt}</span>
       &nbsp;·&nbsp;<span style="color:#64748b;">{leg.get('team','')}</span>{nb_str}
     </div>
@@ -3083,7 +3094,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             sl   = sharp_map.get(sk, {})
                             add_bet(
                                 sport=sport, player=leg["player"],
-                                prop=f"{prop} O{leg.get('line','')} [SGP]",
+                                prop=f"{prop} {_ou(leg)}{leg.get('line','')} [SGP]",
                                 line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
                                 stake=round(stake / n_legs, 2), book="",
                                 notes=f"Auto-logged from SGP {sgp['game']} | {amer_fmt} combined",
@@ -3094,7 +3105,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     _sgp_lines = "\n".join(
                         f"  {j}. {leg['player']} — "
                         f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
-                        f"O{leg.get('line','')} "
+                        f"{_ou(leg)}{leg.get('line','')} "
                         f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
                         for j, leg in enumerate(sgp["legs"], 1)
                     )

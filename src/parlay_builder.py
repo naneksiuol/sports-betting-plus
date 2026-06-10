@@ -39,9 +39,20 @@ CORRELATED_MARKETS = [
      "player_points_assists", "player_rebounds_assists"},
     # NBA/WNBA — steals/blocks
     {"player_steals", "player_blocks", "player_steals_blocks"},
-    # NHL — goals/assists both feed points
-    {"player_goals", "player_assists", "player_points"},
+    # NHL — goals directly feed points (goals+assists=points).
+    # player_assists is intentionally excluded: it shares the key name with
+    # NBA/WNBA "player_assists", which would cause false SGP blocks for basketball.
+    {"player_goals", "player_points"},
 ]
+
+GAME_LINE_LABELS = {
+    "game_total_over":  "Game Total Over",
+    "game_total_under": "Game Total Under",
+    "away_spread":      "Away Spread",
+    "home_spread":      "Home Spread",
+    "away_ml":          "Away Moneyline",
+    "home_ml":          "Home Moneyline",
+}
 
 # Market category buckets for diversity enforcement
 MARKET_BUCKETS = {
@@ -632,7 +643,8 @@ def build_diverse_sgps(
         key = f"{n_legs}_leg"
         candidates = []
 
-        for game, group in pool.groupby("team"):
+        pool["_gkey"] = pool["team"].apply(_game_key)
+        for game, group in pool.groupby("_gkey"):
             players = (
                 group.sort_values("edge", ascending=False)
                 .drop_duplicates(subset=["player"])
@@ -714,11 +726,19 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
                 "games_filtered": games_filtered}
 
     # Merge game-line legs into the player-prop pool for multi-game parlay selection.
+    # Apply filter_live_games to game lines before converting — same 50% rule.
     # Game-line legs are not added to the SGP pool (same-game correlation risk).
-    game_line_legs = build_game_line_legs(game_lines_df)
+    if game_lines_df is not None and not game_lines_df.empty:
+        # game_lines_df uses "time" column; map to "game_start" so filter works
+        _gl_filtered = game_lines_df.copy()
+        _gl_filtered["game_start"] = _gl_filtered.get("time", pd.Series(dtype=str))
+        _gl_filtered = filter_live_games(_gl_filtered, sport)
+        game_line_legs = build_game_line_legs(_gl_filtered)
+    else:
+        game_line_legs = []
+
     if game_line_legs:
         gl_df = pd.DataFrame(game_line_legs)
-        # Align columns so concat works cleanly
         for col in df.columns:
             if col not in gl_df.columns:
                 gl_df[col] = None
@@ -729,17 +749,22 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
     sgp_source = full_df if (full_df is not None and not full_df.empty) else df
     top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=20, per_market=5)
 
-    # Count how many games have at least one positive-edge play
-    pos_edge_games = (
-        int(df[df["edge"] > 0]["team"].nunique())
-        if "edge" in df.columns and not df.empty else 0
+    # Count qualifying games: player props + unique game-line games
+    _prop_edge_games = set(
+        df[df["edge"] > 0]["team"].apply(_game_key).unique()
+        if "edge" in df.columns and not df.empty else []
     )
+    _gl_edge_games = set(
+        _game_key(leg["team"]) for leg in game_line_legs if leg.get("edge", 0) > 0
+    )
+    pos_edge_games = len(_prop_edge_games | _gl_edge_games)
 
     parlays = {}
     for n in [2, 3, 4, 5]:
         if pos_edge_games < n:
             continue  # not enough qualifying games for this leg count
-        legs = build_multi_game_parlay(df_with_gl, n_legs=n, min_odds=-300, max_odds=300, min_leg_edge=0.01)
+        # Lower edge floor for game lines (book edges ~0.5%) vs props (target ~1%+)
+        legs = build_multi_game_parlay(df_with_gl, n_legs=n, min_odds=-300, max_odds=300, min_leg_edge=0.005)
         if len(legs) == n:
             odds = [r["over_odds"] for r in legs]
             parlays[f"{n}_leg"] = {
