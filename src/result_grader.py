@@ -273,7 +273,10 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
             continue
 
         stat_cfg = MLB_PROP_STAT_MAP.get(market_key)
-        if stat_cfg is None:
+        # hits+runs+rbis uses None sentinel — handle before the unknown-market guard
+        if market_key == "hits+runs+rbis":
+            stat_cfg = "combo_hits_runs_rbis"  # sentinel to skip unknown-market exit
+        elif stat_cfg is None:
             skipped.append(f"{bet['player']} — unknown market: {market_key}")
             continue
 
@@ -296,11 +299,9 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
             continue
 
         # hits+runs+rbis is a computed combination, not a single field
-        if stat_cfg is None and market_key == "hits+runs+rbis":
-            b = pstats.get("batting", {})
-            val = b.get("hits", 0) + b.get("runs", 0) + b.get("rbi", 0)
-            if not b:
-                val = None
+        if market_key == "hits+runs+rbis":
+            b = pstats.get("batting") if pstats else None
+            val = (b.get("hits", 0) + b.get("runs", 0) + b.get("rbi", 0)) if b is not None else None
         else:
             stat_group, stat_field = stat_cfg
             player_stats_group = pstats.get(stat_group, {})

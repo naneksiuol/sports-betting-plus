@@ -34,9 +34,6 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 PORT = int(os.environ.get("WEBHOOK_PORT", 8502))
 
-if not WEBHOOK_SECRET:
-    raise RuntimeError("STRIPE_WEBHOOK_SECRET not set")
-
 _processed_events: set = set()
 
 
@@ -124,5 +121,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if not WEBHOOK_SECRET:
+        raise RuntimeError("STRIPE_WEBHOOK_SECRET not set")
     print(f"[webhook] Listening on port {PORT}")
     HTTPServer(("0.0.0.0", PORT), WebhookHandler).serve_forever()
