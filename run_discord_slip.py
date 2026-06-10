@@ -88,14 +88,17 @@ def main():
     from discord_bot import is_configured, send_daily_slip, send
     from scraper import scrape_props
     from parlay_builder import build_parlay_report
-    from bet_tracker import get_stats
+    from bet_tracker import get_stats, get_clv_avg
 
-    discord_ok = is_configured()
-    if not discord_ok:
-        print("⚠️  DISCORD_WEBHOOK_URL not set — will still refresh cache.")
+    if not is_configured():
+        print("ERROR: DISCORD_WEBHOOK_URL is not set. Set it in your .env file or environment and retry.")
+        sys.exit(1)
+
+    discord_ok = True
 
     SPORTS = ["MLB", "NBA", "WNBA", "NHL"]
     record = get_stats()
+    clv_avg = get_clv_avg(n_recent=30)
     all_sent = 0
 
     for sport in SPORTS:
@@ -106,11 +109,8 @@ def main():
                 print(f"    No props found for {sport} today — skipping.")
                 continue
 
-            # Always save cache regardless of Discord status
+            # Always save cache
             save_props_cache(sport, df)
-
-            if not discord_ok:
-                continue
 
             # Filter to positive-edge plays for Discord
             df_edge = df[df["edge"] > 0].copy() if "edge" in df.columns else df.copy()
@@ -124,7 +124,8 @@ def main():
             report = build_parlay_report(df_edge, stake=10.0)
             parlays = report.get("parlays", {})
 
-            ok = send_daily_slip(picks, parlays=parlays, record=record, sport=sport)
+            ok = send_daily_slip(picks, parlays=parlays, record=record, sport=sport,
+                                 clv_avg=clv_avg)
             if ok:
                 print(f"    [OK] {sport} slip sent to Discord.")
                 all_sent += 1
@@ -138,10 +139,10 @@ def main():
     print("\n  Pushing cache to GitHub…")
     push_cache_to_github()
 
-    if discord_ok and all_sent == 0:
+    if all_sent == 0:
         send(content=f"📅 **{datetime.now().strftime('%B %d, %Y')}** — No positive-edge plays found across MLB/NBA/WNBA/NHL today. Check back tomorrow!")
         print("Sent 'no plays' fallback message.")
-    elif discord_ok:
+    else:
         print(f"\n[DONE] {all_sent} sport slip(s) sent to Discord.")
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Finished.")
