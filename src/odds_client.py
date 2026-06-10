@@ -372,16 +372,7 @@ def get_props(sport: str) -> pd.DataFrame:
             if not df.empty:
                 return df
         except Exception:
-            pass  # fall through to scraper
-
-    # Fallback: scrape Action Network (no API key needed)
-    try:
-        from scraper import scrape_props
-        df = scrape_props(sport)
-        if not df.empty:
-            return df
-    except Exception:
-        pass
+            pass
 
     return pd.DataFrame()
 
