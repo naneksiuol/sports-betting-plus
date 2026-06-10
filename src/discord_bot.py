@@ -64,9 +64,25 @@ def send(content: str = "", embeds: list = None) -> bool:
 # ── Message formatters ────────────────────────────────────────────────────────
 
 def send_daily_slip(picks: list[dict], parlays: dict = None,
-                    record: dict = None, sport: str = "MLB") -> bool:
+                    record: dict = None, sport: str = "MLB",
+                    clv_avg: float = None) -> bool:
     today = datetime.now().strftime("%B %d, %Y")
     embeds = []
+
+    # ── Quality filter ──
+    # Primary: edge >= 0.03 OR confidence >= 65
+    filtered = [
+        p for p in picks
+        if p.get("edge", 0) >= 0.03 or p.get("confidence", 0) >= 65
+    ]
+    filter_threshold = 0.03
+    # Fallback: if fewer than 3 pass, lower threshold to edge >= 0.01
+    if len(filtered) < 3:
+        filtered = [p for p in picks if p.get("edge", 0) >= 0.01]
+        filter_threshold = 0.01
+    # Last resort: use all picks so Discord slip is never silently empty
+    if not filtered:
+        filtered = picks
 
     # ── Embed 1: Top picks ──
     record_str = ""
@@ -76,7 +92,7 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
     # Select top 5 per unique prop/market, up to 20 total, sorted by edge descending
     from collections import defaultdict
     _by_market = defaultdict(list)
-    for p in sorted(picks, key=lambda x: x.get("edge", 0), reverse=True):
+    for p in sorted(filtered, key=lambda x: x.get("edge", 0), reverse=True):
         _market = p.get("prop_label", p.get("market", "other"))
         if len(_by_market[_market]) < 5:
             _by_market[_market].append(p)
@@ -126,7 +142,13 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
 
     # Discord allows max 10 embeds per message
     embeds = embeds[:10]
-    embeds[-1]["footer"] = {"text": "Sports Betting Plus • Bet responsibly"}
+    # Build footer with filter note and optional CLV credibility signal
+    threshold_pct = int(filter_threshold * 100)
+    footer_parts = [f"Filtered to edge ≥ {threshold_pct}% | {len(_top20)} plays"]
+    if clv_avg is not None:
+        footer_parts.append(f"System CLV avg: {clv_avg:+.1%}")
+    footer_parts.append("Sports Betting Plus • Bet responsibly")
+    embeds[-1]["footer"] = {"text" : " • ".join(footer_parts)}
     return send(embeds=embeds)
 
 
