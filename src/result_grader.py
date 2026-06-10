@@ -20,6 +20,39 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).parent))
 from bet_tracker import load_bets, update_result, save_bets
 
+# ESPN circuit-breaker: after 3 consecutive None/exception results per session,
+# skip all further ESPN calls and return None immediately.
+_espn_degraded: bool = False
+_espn_consecutive_failures: int = 0
+_ESPN_FAILURE_THRESHOLD: int = 3
+
+
+def _call_grade_from_espn(player: str, market_key: str, line: float, sport: str, date_str: str):
+    """
+    Wrapper around espn_service.grade_from_espn that tracks consecutive
+    failures. After _ESPN_FAILURE_THRESHOLD failures in a row, sets
+    _espn_degraded = True and skips all future calls for this session.
+    """
+    global _espn_degraded, _espn_consecutive_failures
+    if _espn_degraded:
+        return None
+    try:
+        from espn_service import grade_from_espn
+        result = grade_from_espn(player, market_key, line, sport, date_str)
+        if result is None:
+            _espn_consecutive_failures += 1
+        else:
+            _espn_consecutive_failures = 0
+        if _espn_consecutive_failures >= _ESPN_FAILURE_THRESHOLD:
+            _espn_degraded = True
+        return result
+    except Exception:
+        _espn_consecutive_failures += 1
+        if _espn_consecutive_failures >= _ESPN_FAILURE_THRESHOLD:
+            _espn_degraded = True
+        return None
+
+
 MLB_API = "https://statsapi.mlb.com/api/v1"
 NHL_API = "https://api-web.nhle.com/v1"
 NBA_HEADERS = {
@@ -283,18 +316,14 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
         pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
         if not pstats:
             # ESPN fallback
-            try:
-                from espn_service import grade_from_espn
-                result = grade_from_espn(bet["player"], market_key, line, "MLB", date_str)
-                if result:
-                    if not dry_run:
-                        update_result(bet["id"], result)
-                    emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
-                    print(f"  {emoji} [MLB/ESPN] {bet['player']} | O{line} → {result.upper()}")
-                    graded += 1
-                    continue
-            except Exception:
-                pass
+            result = _call_grade_from_espn(bet["player"], market_key, line, "MLB", date_str)
+            if result:
+                if not dry_run:
+                    update_result(bet["id"], result)
+                emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+                print(f"  {emoji} [MLB/ESPN] {bet['player']} | O{line} → {result.upper()}")
+                graded += 1
+                continue
             skipped.append(f"{bet['player']} — not found in boxscores or ESPN")
             continue
 
@@ -441,18 +470,14 @@ def _grade_nba(bets: list[dict], date_str: str, league_id: str, label: str, dry_
         pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
         if not pstats:
             # ESPN fallback
-            try:
-                from espn_service import grade_from_espn
-                result = grade_from_espn(bet["player"], market_key, line, label, date_str)
-                if result:
-                    if not dry_run:
-                        update_result(bet["id"], result)
-                    emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
-                    print(f"  {emoji} [{label}/ESPN] {bet['player']} | O{line} → {result.upper()}")
-                    graded += 1
-                    continue
-            except Exception:
-                pass
+            result = _call_grade_from_espn(bet["player"], market_key, line, label, date_str)
+            if result:
+                if not dry_run:
+                    update_result(bet["id"], result)
+                emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+                print(f"  {emoji} [{label}/ESPN] {bet['player']} | O{line} → {result.upper()}")
+                graded += 1
+                continue
             skipped.append(f"{bet['player']} — not found in box scores or ESPN")
             continue
 
@@ -553,18 +578,14 @@ def _grade_nhl(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
         pstats = all_stats.get(player_norm) or _fuzzy_match_player(player_norm, all_stats)
         if not pstats:
             # ESPN fallback
-            try:
-                from espn_service import grade_from_espn
-                result = grade_from_espn(bet["player"], market_key, line, "NHL", date_str)
-                if result:
-                    if not dry_run:
-                        update_result(bet["id"], result)
-                    emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
-                    print(f"  {emoji} [NHL/ESPN] {bet['player']} | O{line} → {result.upper()}")
-                    graded += 1
-                    continue
-            except Exception:
-                pass
+            result = _call_grade_from_espn(bet["player"], market_key, line, "NHL", date_str)
+            if result:
+                if not dry_run:
+                    update_result(bet["id"], result)
+                emoji = {"win": "✅", "loss": "❌", "push": "↩️"}.get(result, "?")
+                print(f"  {emoji} [NHL/ESPN] {bet['player']} | O{line} → {result.upper()}")
+                graded += 1
+                continue
             skipped.append(f"{bet['player']} — not found in box scores or ESPN")
             continue
 
