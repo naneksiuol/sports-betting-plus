@@ -34,6 +34,11 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 PORT = int(os.environ.get("WEBHOOK_PORT", 8502))
 
+if not WEBHOOK_SECRET:
+    raise RuntimeError("STRIPE_WEBHOOK_SECRET not set")
+
+_processed_events: set = set()
+
 
 def _update_tier(user_id: str, tier: str):
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
@@ -64,14 +69,36 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         etype = event["type"]
+        event_id = event["id"]
         data = event["data"]["object"]
 
+        # Idempotency guard — skip already-processed events
+        if event_id in _processed_events:
+            print(f"[webhook] Duplicate event {event_id}, skipping")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"received": true}')
+            return
+        _processed_events.add(event_id)
+
         if etype == "checkout.session.completed":
-            meta = data.get("metadata", {})
+            session = data
+            meta = session.get("metadata", {})
             user_id = meta.get("user_id")
             tier = meta.get("tier", "standard")
             if user_id:
                 _update_tier(user_id, tier)
+                try:
+                    if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+                        client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+                        client.table("profiles").update({
+                            "stripe_customer_id": session.get("customer"),
+                            "stripe_subscription_id": session.get("subscription"),
+                        }).eq("id", user_id).execute()
+                        print(f"[webhook] Saved stripe_customer_id/stripe_subscription_id for {user_id}")
+                except Exception as exc:
+                    print(f"[webhook] WARNING: could not save stripe IDs for {user_id}: {exc}")
 
         elif etype == "customer.subscription.updated":
             meta = data.get("metadata", {})

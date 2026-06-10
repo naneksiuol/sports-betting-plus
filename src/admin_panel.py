@@ -5,6 +5,15 @@ Admin panel — only visible to users with is_admin = true.
 import os
 import streamlit as st
 import auth
+from supabase import create_client
+
+
+def _get_admin_client():
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        raise RuntimeError("Supabase service key not configured")
+    return create_client(url, key)
 
 
 def show_admin_panel():
@@ -26,8 +35,7 @@ def _user_management():
     st.markdown("### 👥 User Management")
 
     try:
-        import auth as _auth
-        client = _auth.get_client()
+        client = _get_admin_client()
         res = client.table("profiles").select("id, email, full_name, tier, is_admin, created_at").order("created_at", desc=True).execute()
         users = res.data or []
     except Exception as e:
