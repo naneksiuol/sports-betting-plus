@@ -399,6 +399,90 @@ hr { border-color: #2a2a3a !important; }
     gap: 20px;
     flex-wrap: wrap;
 }
+
+/* ── Mobile responsive overrides (max-width: 768px) ── */
+@media (max-width: 768px) {
+    /* 1. Sidebar: collapsed/hidden by default on mobile */
+    [data-testid="stSidebar"] {
+        transform: translateX(-100%) !important;
+        position: fixed !important;
+        z-index: 999 !important;
+        width: 80vw !important;
+        min-width: 0 !important;
+        max-width: 320px !important;
+        height: 100vh !important;
+        overflow-y: auto !important;
+        transition: transform 0.3s ease !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        transform: translateX(0) !important;
+    }
+
+    /* 2. Reduce font sizes for metric labels on small screens */
+    [data-testid="stMetric"] [data-testid="stMetricValue"],
+    [data-testid="metric-container"] [data-testid="stMetricValue"] {
+        font-size: 1.2rem !important;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricLabel"],
+    [data-testid="metric-container"] [data-testid="stMetricLabel"] {
+        font-size: 0.65rem !important;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricDelta"],
+    [data-testid="metric-container"] [data-testid="stMetricDelta"] {
+        font-size: 0.72rem !important;
+    }
+
+    /* 3. Stack st.columns vertically on mobile */
+    [data-testid="column"] {
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+    }
+    [data-testid="stHorizontalBlock"] {
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+    }
+
+    /* 4. Ensure tables scroll horizontally */
+    .stDataFrame,
+    [data-testid="stDataFrame"] {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        display: block !important;
+        max-width: 100vw !important;
+    }
+    .stDataFrame > div,
+    [data-testid="stDataFrame"] > div {
+        overflow-x: auto !important;
+        min-width: 0 !important;
+    }
+
+    /* 5. Reduce chart padding/margins on mobile */
+    .js-plotly-plot {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .js-plotly-plot .plotly {
+        margin: 0 !important;
+    }
+    .js-plotly-plot .svg-container {
+        margin: 0 auto !important;
+    }
+
+    /* General: prevent horizontal overflow on mobile */
+    .main .block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Reduce main title size on mobile */
+    h1 {
+        font-size: 1.6rem !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
