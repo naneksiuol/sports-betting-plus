@@ -81,6 +81,7 @@ FEATURE_NAMES = [
     "implied_prob", "opening_implied", "odds_movement",
     "edge_open", "edge_current", "line_norm",
     "market_bucket", "sport_code", "is_underdog", "juice_norm",
+    "line_movement", "days_rest", "home_game",
 ]
 
 
@@ -118,6 +119,9 @@ def build_features(
     sport: str,
     edge: float = 0.0,
     edge_open: float = 0.0,
+    line_movement: float = 0.0,
+    days_rest: float = 3.0,
+    home_game: float = 0.0,
 ) -> list[float]:
     imp      = _imp(odds)
     open_imp = _imp(opening_odds) if opening_odds else imp
@@ -134,6 +138,9 @@ def build_features(
         SPORT_CODE.get(sport.upper(), 0) / 4.0,    # sport_code (norm)
         1.0 if odds > 0 else 0.0,                  # is_underdog
         min(abs(odds) / 300.0, 1.0),               # juice_norm
+        float(line_movement),                      # line_movement (open - current line)
+        min(float(days_rest) / 14.0, 1.0),         # days_rest (normalised, cap 14)
+        float(home_game),                          # home_game (0 or 1)
     ]
 
 
@@ -161,10 +168,40 @@ def _extract_bet_features(bet: dict, snap_index: dict) -> Optional[tuple[list, i
         open_odds   = float(snap_entry.get("opening", odds))
         edge_open   = float(snap_entry.get("edge", 0.0))
 
+        # New contextual features — safe defaults when columns absent
+        try:
+            line_movement = float(bet.get("open_line", line)) - line
+        except Exception:
+            line_movement = 0.0
+
+        try:
+            import datetime
+            last_date_str = bet.get("last_game_date")
+            bet_date_str  = bet.get("date", "")
+            if last_date_str and bet_date_str:
+                days_rest = (
+                    datetime.date.fromisoformat(bet_date_str[:10]) -
+                    datetime.date.fromisoformat(last_date_str[:10])
+                ).days
+                days_rest = max(0.0, float(days_rest))
+            else:
+                days_rest = 3.0
+        except Exception:
+            days_rest = 3.0
+
+        try:
+            venue    = str(bet.get("home_away", bet.get("venue", ""))).lower()
+            home_game = 1.0 if venue in ("home", "h") else 0.0
+        except Exception:
+            home_game = 0.0
+
         feats = build_features(
             odds=odds, opening_odds=open_odds,
             line=line, market=market, sport=sport,
             edge=0.0, edge_open=edge_open,
+            line_movement=line_movement,
+            days_rest=days_rest,
+            home_game=home_game,
         )
         return feats, label
 
@@ -254,6 +291,7 @@ class PropModel:
         """
         try:
             import lightgbm as lgb
+            from sklearn.calibration import CalibratedClassifierCV
             from sklearn.model_selection import StratifiedKFold, cross_val_score, TimeSeriesSplit
             from sklearn.metrics import roc_auc_score, brier_score_loss
         except ImportError as e:
