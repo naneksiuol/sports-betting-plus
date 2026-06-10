@@ -822,11 +822,11 @@ def render_bet_tracker():
             fig_clv.update_layout(
                 title="CLV Per Bet (positive = beat the market)",
                 xaxis_title="Bet #", yaxis_title="CLV (%)",
-                height=280, margin=dict(l=0, r=0, t=40, b=0),
+                height=260, margin=dict(l=0, r=0, t=40, b=0),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="white"),
             )
-            st.plotly_chart(fig_clv, use_container_width=True)
+            st.plotly_chart(fig_clv, use_container_width=True, config={"responsive": True})
 
     st.divider()
 
@@ -962,8 +962,8 @@ def render_bet_tracker():
                 name="Cumulative P&L"
             ))
             fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
-            fig.update_layout(title="Cumulative P&L ($)", height=320, **PLOT_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(title="Cumulative P&L ($)", height=260, **PLOT_LAYOUT)
+            st.plotly_chart(fig, use_container_width=True, config={"responsive": True})
 
         with ch2:
             # Win/Loss by sport
@@ -981,9 +981,9 @@ def render_bet_tracker():
                 ))
                 fig2.update_layout(
                     title="Wins vs Losses by Sport", barmode="group",
-                    height=320, **PLOT_LAYOUT
+                    height=260, **PLOT_LAYOUT
                 )
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, use_container_width=True, config={"responsive": True})
 
         # ROI by sport table
         if stats["by_sport"]:
@@ -1042,10 +1042,10 @@ def render_bet_tracker():
                 fig_p.update_layout(
                     title="Parlay: Expected EV% vs Actual ROI%",
                     barmode="group",
-                    height=360,
+                    height=280,
                     **PLOT_LAYOUT,
                 )
-                st.plotly_chart(fig_p, use_container_width=True)
+                st.plotly_chart(fig_p, use_container_width=True, config={"responsive": True})
                 total_parlay_profit = sum(b.get("profit") or 0 for b in parlay_bets)
                 parlay_wins = sum(1 for b in parlay_bets if b.get("result") == "win")
                 st.caption(
@@ -1263,9 +1263,9 @@ def render_bet_tracker():
                         annotation_font_color="#ff6060",
                     )
                 _fig_bk.update_layout(
-                    title="Bankroll Over Time", height=360, **PLOT_LAYOUT
+                    title="Bankroll Over Time", height=280, **PLOT_LAYOUT
                 )
-                st.plotly_chart(_fig_bk, use_container_width=True)
+                st.plotly_chart(_fig_bk, use_container_width=True, config={"responsive": True})
 
                 _sm1, _sm2, _sm3, _sm4, _sm5 = st.columns(5)
                 _sm1.metric("Starting Bankroll", f"${_STARTING_BK:,.0f}")
@@ -1349,9 +1349,9 @@ def render_clv_tab():
             fig_roll.update_layout(
                 title="CLV per Bet + 10-Bet Rolling Average",
                 xaxis_title="Bet #", yaxis_title="CLV (%)",
-                height=320, **PLOT_LAYOUT
+                height=260, **PLOT_LAYOUT
             )
-            st.plotly_chart(fig_roll, use_container_width=True)
+            st.plotly_chart(fig_roll, use_container_width=True, config={"responsive": True})
 
         with col_r:
             fig_cum = go.Figure()
@@ -1366,9 +1366,9 @@ def render_clv_tab():
             fig_cum.update_layout(
                 title="Cumulative CLV (Edge Accumulation)",
                 xaxis_title="Bet #", yaxis_title="Cumulative CLV (%)",
-                height=320, **PLOT_LAYOUT
+                height=260, **PLOT_LAYOUT
             )
-            st.plotly_chart(fig_cum, use_container_width=True)
+            st.plotly_chart(fig_cum, use_container_width=True, config={"responsive": True})
 
     # ── CLV by Sport ──────────────────────────────────────────────────────────
     if clv_bets:
@@ -1393,8 +1393,8 @@ def render_clv_tab():
                     title="Avg CLV by Sport", text="Avg CLV",
                 )
                 fig_sp.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
-                fig_sp.update_layout(height=300, coloraxis_showscale=False, **PLOT_LAYOUT)
-                st.plotly_chart(fig_sp, use_container_width=True)
+                fig_sp.update_layout(height=260, coloraxis_showscale=False, **PLOT_LAYOUT)
+                st.plotly_chart(fig_sp, use_container_width=True, config={"responsive": True})
 
         # By market
         with col_mk:
@@ -1417,8 +1417,8 @@ def render_clv_tab():
                     title="Avg CLV by Market (min 3 bets)", text="Avg CLV",
                 )
                 fig_mk.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
-                fig_mk.update_layout(height=300, coloraxis_showscale=False, **PLOT_LAYOUT)
-                st.plotly_chart(fig_mk, use_container_width=True)
+                fig_mk.update_layout(height=260, coloraxis_showscale=False, **PLOT_LAYOUT)
+                st.plotly_chart(fig_mk, use_container_width=True, config={"responsive": True})
 
     # ── Win Rate vs Expected ──────────────────────────────────────────────────
     if settled:
@@ -1458,9 +1458,9 @@ def render_clv_tab():
                              annotation_text="50% baseline")
             fig_wr.update_layout(
                 title="Win Rate by Sport (settled bets)",
-                yaxis_title="Win %", height=300, **PLOT_LAYOUT
+                yaxis_title="Win %", height=260, **PLOT_LAYOUT
             )
-            st.plotly_chart(fig_wr, use_container_width=True)
+            st.plotly_chart(fig_wr, use_container_width=True, config={"responsive": True})
 
     # ── Bankroll Growth Chart ──────────────────────────────────────────────────
     if settled:
@@ -1488,9 +1488,9 @@ def render_clv_tab():
         fig_bk.update_layout(
             title="Cumulative P&L Over All Bets",
             xaxis_title="Bet #", yaxis_title="Profit ($)",
-            height=350, **PLOT_LAYOUT
+            height=270, **PLOT_LAYOUT
         )
-        st.plotly_chart(fig_bk, use_container_width=True)
+        st.plotly_chart(fig_bk, use_container_width=True, config={"responsive": True})
 
         # Drawdown chart
         bk_df["peak"] = bk_df["cumulative"].cummax()
@@ -3079,7 +3079,7 @@ def render_sport_tab(sport: str, use_live: bool):
             fig.add_trace(go.Scatter(x=[0.45, 0.90], y=[0.45, 0.90], mode="lines",
                                      name="No Edge", line=dict(color="rgba(255,255,255,0.2)", dash="dash")))
             fig.update_layout(**PLOT_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={"responsive": True})
 
     with tab2:
         if len(filtered) > 0:
@@ -3092,7 +3092,7 @@ def render_sport_tab(sport: str, use_live: bool):
                           title="Top 15 Value Plays by Edge",
                           labels={"edge": "Edge", "label": "Player (Prop)"}, height=500)
             fig2.update_layout(showlegend=False, **PLOT_LAYOUT)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, use_container_width=True, config={"responsive": True})
 
     with tab3:
         if len(filtered) > 1:
@@ -3104,7 +3104,7 @@ def render_sport_tab(sport: str, use_live: bool):
                            annotation_text="Threshold",
                            annotation_font_color="#ff6060")
             fig3.update_layout(**PLOT_LAYOUT)
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, use_container_width=True, config={"responsive": True})
 
     with tab4:
         # ── Prop Correlation Heatmap ──
@@ -3149,7 +3149,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     yaxis=dict(tickfont=dict(size=9, color="#888")),
                     **PLOT_LAYOUT,
                 )
-                st.plotly_chart(fig_heat, use_container_width=True)
+                st.plotly_chart(fig_heat, use_container_width=True, config={"responsive": True})
                 st.caption(
                     "Purple = highly correlated (same player, overlapping markets). "
                     "Dark = uncorrelated. Avoid stacking high-ρ legs in parlays — "
@@ -3260,11 +3260,11 @@ def _render_ml_tab():
                     title="Reliability Diagram (closer to diagonal = better)",
                     xaxis_title="Mean Predicted Probability",
                     yaxis_title="Fraction of Positives (actual win rate)",
-                    height=350,
+                    height=270,
                     paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
                     font=dict(color="#eee"),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, config={"responsive": True})
 
             if st.button("🔄 Retrain Calibrator", key="retrain_cal"):
                 with st.spinner("Training calibrator on historical bets…"):
@@ -3439,11 +3439,11 @@ def _render_ml_tab():
                     title="Line Move Distribution (cents of implied probability)",
                     xaxis_title="Move Size (cents)",
                     yaxis_title="Count",
-                    height=280,
+                    height=260,
                     paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
                     font=dict(color="#eee"),
                 )
-                st.plotly_chart(_fig2, use_container_width=True)
+                st.plotly_chart(_fig2, use_container_width=True, config={"responsive": True})
 
         except Exception as _e:
             st.error(f"Steam detector error: {_e}")
