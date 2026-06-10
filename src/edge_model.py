@@ -413,6 +413,7 @@ def negbin_fair_prob(
     line: float,
     shin_fair_prob: float,
     dispersion_r: float = 5.0,
+    max_delta: float = 0.10,
 ) -> float:
     """
     Negative Binomial correction to Shin de-vig fair probability.
@@ -423,6 +424,13 @@ def negbin_fair_prob(
     Method:
       1. Infer λ from shin_fair_prob assuming Poisson
       2. Recompute P(Y > line) using NegBin(λ, r)
+
+    Args:
+        max_delta: Maximum allowed absolute deviation of the NegBin result
+            from shin_fair_prob.  If the correction exceeds this threshold
+            (e.g. low-r markets like HR where NegBin over-corrects),
+            the function returns shin_fair_prob unchanged rather than risk
+            a badly miscalibrated signal.  Default 0.10 (10 pp).
     """
     try:
         from scipy.stats import poisson as _poisson, nbinom as _nbinom
@@ -446,6 +454,14 @@ def negbin_fair_prob(
 
     p_nb = dispersion_r / (dispersion_r + lam)
     nb_prob = float(_nbinom.sf(threshold - 1, dispersion_r, p_nb))
+
+    # Guard: if NegBin deviates too far from Shin, trust Shin instead.
+    # This prevents overcorrection in low-dispersion markets (e.g. home runs,
+    # stolen bases) where small r values cause the NegBin tail to diverge
+    # substantially from the Poisson-implied probability.
+    if abs(nb_prob - shin_fair_prob) > max_delta:
+        return shin_fair_prob
+
     return round(min(max(nb_prob, 0.001), 0.999), 4)
 
 
