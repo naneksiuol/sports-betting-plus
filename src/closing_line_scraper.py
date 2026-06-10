@@ -1,85 +1,90 @@
 """
-Closing Line Auto-Scraper
-=========================
-Automatically fetches closing odds for pending bets and computes CLV.
+Closing Line Updater
+====================
+Fetches closing odds for pending bets and computes CLV.
+
+Data source: The Odds API (licensed) — no Action Network dependency.
 
 How it works:
-  1. Reads pending bets from bets.json
-  2. For each bet, searches Action Network for the matching prop
-  3. If the game is complete/final, records those odds as the closing line
-  4. Falls back to the last known odds snapshot (odds_snapshots.json)
-  5. Computes CLV via edge_model.closing_line_value and writes it back
+  1. Loads pending bets from Supabase (or bets.json fallback)
+  2. For each sport, fetches current/recent odds from The Odds API
+  3. Matches props to bets using fuzzy player name matching
+  4. Computes CLV via edge_model.closing_line_value and writes it back
+  5. Falls back to sharp_odds stored at bet time if no live data available
 
-Called by run_grader.bat nightly, or call manually:
-    python src/closing_line_scraper.py
+Run nightly:  python src/closing_line_scraper.py
 """
 
+import os
 import sys
-import json
 import time
 import requests
 from pathlib import Path
-from datetime import datetime, date, timedelta
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from bet_tracker import load_bets, save_bets, _compute_clv
-from scraper import SPORT_SLUG, PROP_TYPE_MAP, BOOK_IDS, HEADERS, _american_to_implied
 
-SNAPSHOTS_FILE = Path(__file__).parent.parent / "data" / "odds_snapshots.json"
+# ── Odds API helpers ──────────────────────────────────────────────────────────
+
+_ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+_SPORT_KEYS = {
+    "MLB":  "baseball_mlb",
+    "NBA":  "basketball_nba",
+    "WNBA": "basketball_wnba",
+    "NHL":  "icehockey_nhl",
+    "NFL":  "americanfootball_nfl",
+}
+_SHARP_BOOKS = ["pinnacle", "betfair_ex_eu", "bookmaker"]
+_MARKET_MAP = {
+    "batter_hits":            "batter_hits",
+    "batter_home_runs":       "batter_home_runs",
+    "batter_total_bases":     "batter_total_bases",
+    "batter_rbis":            "batter_rbis",
+    "batter_runs_scored":     "batter_runs_scored",
+    "batter_stolen_bases":    "batter_stolen_bases",
+    "pitcher_strikeouts":     "pitcher_strikeouts",
+    "pitcher_hits_allowed":   "pitcher_hits_allowed",
+    "pitcher_outs_recorded":  "pitcher_outs_recorded",
+    "pitcher_walks":          "pitcher_walks",
+    "player_points":          "player_points",
+    "player_rebounds":        "player_rebounds",
+    "player_assists":         "player_assists",
+    "player_threes":          "player_threes",
+    "player_points_rebounds_assists": "player_points_rebounds_assists",
+    "player_goals":           "player_goals",
+    "player_shots_on_goal":   "player_shots_on_goal",
+    "player_saves":           "player_saves",
+}
 
 
-# ── Snapshot helpers ──────────────────────────────────────────────────────────
+def _api_key() -> str:
+    return os.environ.get("ODDS_API_KEY", "")
 
-def _load_snapshots() -> dict:
-    if not SNAPSHOTS_FILE.exists():
+
+def _fetch_player_props(sport: str, event_id: str, market: str) -> dict:
+    """
+    Fetch player prop odds from The Odds API for a specific event + market.
+    Returns {(player_lower, line): sharp_odds} dict.
+    """
+    key = _api_key()
+    if not key:
+        return {}
+    sport_key = _SPORT_KEYS.get(sport)
+    if not sport_key:
         return {}
     try:
-        return json.loads(SNAPSHOTS_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _snapshot_key(player: str, market: str, line: float) -> str:
-    return f"{player.lower().strip()}|{market}|{line}"
-
-
-def get_snapshot_odds(player: str, market: str, line: float) -> int | None:
-    """Return last known odds from snapshots file for a player/market/line."""
-    snaps = _load_snapshots()
-    key   = _snapshot_key(player, market, line)
-    # Search newest date first
-    for day in sorted(snaps.keys(), reverse=True):
-        if key in snaps[day]:
-            return snaps[day][key].get("odds")
-    return None
-
-
-# ── Action Network closing odds fetch ────────────────────────────────────────
-
-def _fetch_completed_games(sport: str) -> list[dict]:
-    """Get yesterday's + today's games including completed ones."""
-    slug = SPORT_SLUG.get(sport, sport.lower())
-    try:
         r = requests.get(
-            f"https://api.actionnetwork.com/web/v1/scoreboard/{slug}",
-            params={"period": "game", "bookIds": BOOK_IDS},
-            headers=HEADERS, timeout=12,
-        )
-        r.raise_for_status()
-        return r.json().get("games", [])
-    except Exception:
-        return []
-
-
-def _fetch_closing_odds_for_game(game_id: int) -> dict:
-    """
-    Returns dict: {(player_lower, market, line): closing_over_odds}
-    """
-    try:
-        r = requests.get(
-            f"https://api.actionnetwork.com/web/v2/games/{game_id}/props",
-            headers=HEADERS, timeout=10,
+            f"{_ODDS_API_BASE}/sports/{sport_key}/events/{event_id}/odds",
+            params={
+                "apiKey":       key,
+                "regions":      "us",
+                "markets":      market,
+                "bookmakers":   ",".join(_SHARP_BOOKS),
+                "oddsFormat":   "american",
+            },
+            timeout=10,
         )
         if r.status_code != 200:
             return {}
@@ -87,113 +92,77 @@ def _fetch_closing_odds_for_game(game_id: int) -> dict:
     except Exception:
         return {}
 
-    result    = {}
-    players   = data.get("players", {})
-    pr_props  = data.get("player_props", {})
-    CONSENSUS_ID = "15"
-    OPEN_ID      = "30"
-
-    for prop_key, prop_list in pr_props.items():
-        market = PROP_TYPE_MAP.get(prop_key)
-        if not market:
-            continue
-        if not isinstance(prop_list, list):
-            prop_list = [prop_list]
-
-        for prop in prop_list:
-            pid = prop.get("player_id")
-            if not pid:
+    result: dict = {}
+    for bm in data.get("bookmakers", []):
+        for mkt in bm.get("markets", []):
+            if mkt.get("key") != market:
                 continue
-            pid_str = str(pid)
-            pid_int = int(pid_str) if pid_str.isdigit() else None
-            pinfo   = players.get(pid_str) or (players.get(pid_int, {}) if pid_int is not None else {}) or {}
-            name    = pinfo.get("full_name", "")
-            if not name:
-                continue
-
-            lines     = prop.get("lines", {})
-            line_val  = None
-            best_odds = None
-
-            for priority_id in [CONSENSUS_ID, OPEN_ID, "69", "68"]:
-                blines = lines.get(priority_id) or lines.get(int(priority_id), [])
-                if not isinstance(blines, list):
-                    blines = [blines]
-                for ln in blines:
-                    if ln.get("side", "").lower() == "over" and ln.get("odds"):
-                        line_val  = float(ln.get("value", 0.5))
-                        best_odds = int(ln["odds"])
-                        break
-                if best_odds is not None:
-                    break
-
-            if best_odds is not None and line_val is not None:
-                key = (name.lower(), market, line_val)
-                result[key] = best_odds
-
+            for outcome in mkt.get("outcomes", []):
+                if outcome.get("name", "").lower() != "over":
+                    continue
+                player = outcome.get("description", "").lower().strip()
+                line   = outcome.get("point")
+                price  = outcome.get("price")
+                if player and line is not None and price is not None:
+                    k = (player, float(line))
+                    if k not in result:
+                        result[k] = int(price)
     return result
 
 
-def fetch_closing_odds(sport: str) -> dict:
-    """
-    Returns all available closing odds for a sport today.
-    {(player_lower, market, line): closing_over_odds}
-    """
-    games      = _fetch_completed_games(sport)
-    all_odds   = {}
+def _fetch_events(sport: str) -> list[dict]:
+    """Fetch today's + recent events for a sport from The Odds API."""
+    key      = _api_key()
+    sport_key = _SPORT_KEYS.get(sport)
+    if not key or not sport_key:
+        return []
+    try:
+        r = requests.get(
+            f"{_ODDS_API_BASE}/sports/{sport_key}/events",
+            params={"apiKey": key},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return []
+        return r.json()
+    except Exception:
+        return []
 
-    for game in games:
-        status = game.get("status", "").lower()
-        # Only use games that are final or in-progress (late) as closing reference
-        if status not in ("complete", "completed", "final", "in-progress", "halftime"):
-            continue
-        gid     = game["id"]
-        g_odds  = _fetch_closing_odds_for_game(gid)
-        all_odds.update(g_odds)
-        time.sleep(0.15)  # be polite to the API
-
-    return all_odds
-
-
-# ── Player name fuzzy match ───────────────────────────────────────────────────
 
 def _name_match(bet_player: str, api_player: str) -> bool:
-    """True if names are close enough to be the same player."""
     a = bet_player.lower().strip()
     b = api_player.lower().strip()
     if a == b:
         return True
-    # Check if last name + first initial match
     a_parts = a.split()
     b_parts = b.split()
     if len(a_parts) >= 2 and len(b_parts) >= 2:
         if a_parts[-1] == b_parts[-1] and a_parts[0][0] == b_parts[0][0]:
             return True
-    return False
+    # Containment check (handles "Jr.", accents, etc.)
+    return (a in b) or (b in a)
 
 
-def _extract_market_from_prop(prop_str: str) -> str:
-    """Extract market key from prop string like 'pitcher_strikeouts O6.5 [3-leg parlay]'."""
-    if not prop_str:
-        return ""
-    return prop_str.split(" ")[0].strip()
+def _extract_market(prop_str: str) -> str:
+    return prop_str.split(" ")[0].strip() if prop_str else ""
 
 
 # ── Main updater ──────────────────────────────────────────────────────────────
 
-def update_closing_lines(dry_run: bool = False) -> int:
+def update_closing_lines(dry_run: bool = False, user_id: str = None) -> int:
     """
-    Fetch closing odds for all pending/ungraded bets and write CLV.
+    Fetch closing odds for all bets missing CLV and write results back.
     Returns count of bets updated.
+    Uses The Odds API as the sole data source (no Action Network).
     """
-    bets    = load_bets()
+    bets    = load_bets(user_id)
     updated = 0
 
-    # Group pending bets by sport
+    # Group bets missing CLV by sport
     by_sport: dict[str, list[dict]] = {}
     for b in bets:
         if b.get("clv") is not None:
-            continue  # already has CLV
+            continue
         sp = b.get("sport", "")
         if sp:
             by_sport.setdefault(sp, []).append(b)
@@ -203,34 +172,44 @@ def update_closing_lines(dry_run: bool = False) -> int:
         return 0
 
     for sport, sport_bets in by_sport.items():
-        print(f"  {sport}: checking {len(sport_bets)} bets …")
+        print(f"  {sport}: checking {len(sport_bets)} bets…")
 
-        # Try live fetch from Action Network
-        closing = {}
-        try:
-            closing = fetch_closing_odds(sport)
-            print(f"    {len(closing)} closing lines fetched from Action Network")
-        except Exception as e:
-            print(f"    API fetch failed ({e}), falling back to snapshots")
+        if not _api_key():
+            print("    ODDS_API_KEY not set — using sharp_odds fallback only")
+        else:
+            # Fetch events for this sport
+            events = _fetch_events(sport)
+            print(f"    {len(events)} events found")
+
+            # Build a market→props lookup: market → {(player_lower, line): odds}
+            market_props: dict[str, dict] = {}
+            needed_markets = {_extract_market(b.get("prop", "")) for b in sport_bets}
+            for market in needed_markets:
+                if not market or market not in _MARKET_MAP:
+                    continue
+                combined: dict = {}
+                for event in events[:20]:  # cap to avoid excessive API calls
+                    props = _fetch_player_props(sport, event["id"], market)
+                    combined.update(props)
+                    time.sleep(0.1)
+                if combined:
+                    market_props[market] = combined
 
         for bet in sport_bets:
-            player  = bet.get("player", "")
-            market  = _extract_market_from_prop(bet.get("prop", ""))
-            line    = float(bet.get("line", 0.5))
-            bet_odds = int(bet.get("odds") or 0)
+            player    = bet.get("player", "")
+            market    = _extract_market(bet.get("prop", ""))
+            line      = float(bet.get("line", 0.5))
+            bet_odds  = int(bet.get("odds") or 0)
+            closing_odds: int | None = None
 
-            # 1. Try live closing odds
-            closing_odds = None
-            for (ap, am, al), odds in closing.items():
-                if _name_match(player, ap) and am == market and abs(al - line) < 0.1:
-                    closing_odds = odds
-                    break
+            # 1. Try The Odds API closing props
+            if _api_key() and market in market_props:
+                for (api_player, api_line), odds in market_props[market].items():
+                    if _name_match(player, api_player) and abs(api_line - line) < 0.1:
+                        closing_odds = odds
+                        break
 
-            # 2. Fall back to snapshot (last recorded odds)
-            if closing_odds is None:
-                closing_odds = get_snapshot_odds(player, market, line)
-
-            # 3. Fall back to sharp_odds stored at bet time
+            # 2. Fall back to sharp_odds stored at bet time
             if closing_odds is None and bet.get("sharp_odds"):
                 closing_odds = int(bet["sharp_odds"])
 
@@ -246,7 +225,7 @@ def update_closing_lines(dry_run: bool = False) -> int:
             updated += 1
 
     if not dry_run and updated:
-        save_bets(bets)
+        save_bets(bets, user_id)
         print(f"\n✅ Updated CLV for {updated} bet(s).")
     elif dry_run:
         print(f"\n[DRY RUN] Would update {updated} bet(s).")
@@ -257,8 +236,9 @@ def update_closing_lines(dry_run: bool = False) -> int:
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    p.add_argument("--dry-run",  action="store_true", help="Preview without writing")
+    p.add_argument("--user-id",  default=None,        help="Supabase user UUID (service-role mode)")
     args = p.parse_args()
-    print(f"Closing Line Scraper — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    n = update_closing_lines(dry_run=args.dry_run)
+    print(f"Closing Line Updater — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    n = update_closing_lines(dry_run=args.dry_run, user_id=args.user_id)
     print(f"Done. {n} bets updated.")
