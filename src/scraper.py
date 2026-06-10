@@ -5,16 +5,34 @@ No API key required.
 """
 
 import requests
+import time as _time
 import pandas as pd
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+
+def _get_with_retry(url, *, params=None, timeout=12, max_retries=3):
+    """GET with exponential backoff. Returns Response or raises on final failure."""
+    delay = 2
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last_exc = e
+            if attempt < max_retries - 1:
+                _time.sleep(delay)
+                delay *= 2
+    raise last_exc
 
 # FanDuel NJ (69) and DraftKings NJ (68) — bet targets, must have over to be shown
 # Consensus (15) — market consensus line, posts BOTH sides on every prop: best fair-prob calibrator
 # Open (30)      — opening/sharp line, also posts both sides: second-best calibrator
 # BetMGM NJ (75), Caesars NV (49), BetRivers NJ (71) — extra books for depth
 # ESPN BET (45)  — additional bet target for line shopping
-BOOK_IDS = "69,68,15,30,75,49,71,45"
+BOOK_IDS = "69,68,15,30,75,49,71,45,34,123"  # added BetOnline(34), Bookmaker(123)
 FD_ID          = "69"
 DK_ID          = "68"
 ESPN_ID        = "45"
@@ -176,23 +194,19 @@ def scrape_game_lines(sport: str) -> "pd.DataFrame":
 
 def _get_games(sport: str) -> list[dict]:
     slug = SPORT_SLUG.get(sport, sport.lower())
-    r = requests.get(
+    r = _get_with_retry(
         f"https://api.actionnetwork.com/web/v1/scoreboard/{slug}",
         params={"period": "game", "bookIds": BOOK_IDS},
-        headers=HEADERS, timeout=12,
     )
-    r.raise_for_status()
     return r.json().get("games", [])
 
 
 def _get_props_for_game(game_id: int) -> dict:
     try:
-        r = requests.get(
+        r = _get_with_retry(
             f"https://api.actionnetwork.com/web/v2/games/{game_id}/props",
-            headers=HEADERS, timeout=8,
+            timeout=8,
         )
-        if r.status_code != 200:
-            return {}
         return r.json()
     except Exception:
         return {}

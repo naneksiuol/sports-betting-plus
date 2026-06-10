@@ -531,13 +531,15 @@ def render_bet_tracker():
     st.markdown("## 📊 Bet Tracker")
     st.caption("Log your bets, track results, and measure if the system is actually profitable.")
 
+    # Load once per render and pass through — avoids 5+ repeated disk reads
+    _all_bets_cache = load_bets()
     stats = get_stats()
 
     # ── KPIs ──
     k1, k2, k3, k4, k5 = st.columns(5)
     roi_color = "#00ff88" if stats["roi"] >= 0 else "#ff6060"
     k1.metric("Total Bets", stats["total_bets"])
-    k2.metric("Win Rate", f"{stats['win_rate']}%", delta=f"{stats['wins']}W / {stats['losses']}L")
+    k2.metric("Win Rate", f"{stats['win_rate']}%", delta=f"{stats['wins']}W / {stats['losses']}L / {stats.get('voids',0)}V")
     k3.metric("Total Profit", f"${stats['total_profit']:+.2f}")
     k4.metric("ROI", f"{stats['roi']:+.1f}%")
     clv_val = stats.get("avg_clv") or stats.get("avg_opening_clv")
@@ -611,11 +613,21 @@ def render_bet_tracker():
             st.info("No bets logged yet. Use the form to log your first bet.")
         else:
             # Result filter
-            filter_result = st.selectbox("Filter", ["All", "Pending", "Win", "Loss", "Push"],
+            filter_result = st.selectbox("Filter", ["All", "Pending", "Win", "Loss", "Push", "Void"],
                                           key="bet_filter", label_visibility="collapsed")
             filtered_bets = bets if filter_result == "All" else [
                 b for b in bets if b["result"].lower() == filter_result.lower()
             ]
+
+            if filtered_bets:
+                import csv, io as _io
+                _buf = _io.StringIO()
+                _fields = ["date", "sport", "player", "prop", "line", "odds", "stake",
+                           "book", "result", "profit", "fair_est", "edge", "opening_clv", "clv", "notes"]
+                _w = csv.DictWriter(_buf, fieldnames=_fields, extrasaction="ignore")
+                _w.writeheader()
+                _w.writerows(filtered_bets)
+                st.download_button("📥 Export CSV", _buf.getvalue(), "bets.csv", "text/csv", use_container_width=False)
 
             for bet in reversed(filtered_bets):
                 result = bet["result"]
@@ -1521,10 +1533,11 @@ def render_sport_tab(sport: str, use_live: bool):
 """, unsafe_allow_html=True)
 
     # ── Line movement snapshot + steam alerts ──
+    _alerts_gated = _tiers and not _tiers.can(_current_tier, "alerts")
     try:
         from line_movement import record_snapshot, get_movement_for_df, format_movement, snapshot_key
         # Only track movement on live/scraped data — static CSV has stale odds that cause false alerts
-        if data_source == "static":
+        if data_source == "static" or _alerts_gated:
             steam_alerts = []
             movement_map = {}
         else:
@@ -1566,6 +1579,8 @@ def render_sport_tab(sport: str, use_live: bool):
                                                   alert["prev_odds"], alert["curr_odds"], alert["diff"])
                             broadcast(msg)
                         already_sent.add(f"{alert['player']}|{alert['curr_odds']}")
+                    if len(already_sent) > 500:
+                        already_sent = set()  # reset to prevent unbounded growth
                     st.session_state[sent_key] = already_sent
                 except Exception:
                     pass
@@ -1686,7 +1701,11 @@ def render_sport_tab(sport: str, use_live: bool):
     try:
         from streak_detector import get_streaks_for_df
         _top_idx = df.nlargest(30, "edge").index
-        _streak_top = get_streaks_for_df(df.loc[_top_idx], sport)
+        _streak_cache_key = f"_streaks_{sport}_{len(df)}"
+        if _streak_cache_key not in st.session_state:
+            with st.spinner("Loading player streaks..."):
+                st.session_state[_streak_cache_key] = get_streaks_for_df(df.loc[_top_idx], sport)
+        _streak_top = st.session_state[_streak_cache_key]
         df["streak"] = ""
         df["hot"] = False
         df.loc[_top_idx, "streak"] = _streak_top["streak"].values
@@ -1793,6 +1812,11 @@ def render_sport_tab(sport: str, use_live: bool):
     st.divider()
 
     # ── Game Lines ──
+    if _tiers and not _tiers.can(_current_tier, "game_lines"):
+        with st.expander("📋 Today's Game Lines (Moneyline · Spread · Total)", expanded=False):
+            import auth_ui as _aui
+            _aui.show_upgrade_modal("standard", key=f"game_lines_{sport}")
+        return
     with st.expander("📋 Today's Game Lines (Moneyline · Spread · Total)", expanded=False):
         try:
             from odds_client import get_game_lines
@@ -1845,7 +1869,10 @@ def render_sport_tab(sport: str, use_live: bool):
     # ── AI Summary ──
     if GROQ_API_KEY and len(filtered) > 0:
         with st.expander("🤖 AI Board Summary", expanded=False):
-            if st.button("Generate Summary", key=f"summary_{sport}"):
+            if _tiers and not _tiers.can(_current_tier, "ai_analysis"):
+                import auth_ui as _aui
+                _aui.show_upgrade_modal("premium", key=f"ai_{sport}")
+            elif st.button("Generate Summary", key=f"summary_{sport}"):
                 stats = {
                     "sport": sport,
                     "total_value_bets": len(filtered),
