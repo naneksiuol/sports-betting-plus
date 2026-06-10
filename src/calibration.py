@@ -123,7 +123,10 @@ def _extract_features(bet: dict) -> list[float] | None:
         else:
             odds_bucket = 5.0
 
-        return [logit_imp, logit_fair, edge, clv_feat,
+        # logit_fair is intentionally excluded: fair_est is a model output, so
+        # including it creates a circular dependency where the calibrator just
+        # learns to echo fair_est back.  Only model-independent features remain.
+        return [logit_imp, edge, clv_feat,
                 mgroup, sport_idx, line_bucket, odds_bucket]
 
     except Exception:
