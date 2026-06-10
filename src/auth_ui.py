@@ -375,6 +375,40 @@ def show_user_menu():
         admin_badge = " 👑" if user.get("is_admin") else ""
         st.markdown(f"👤 **{user['name']}**{admin_badge}")
         st.markdown(f"{t.tier_badge(tier)}")
+
+        # ── Subscription status indicator ──
+        profile = st.session_state.get("profile", {})
+        profile_tier = profile.get("tier", tier)
+        if profile_tier == "past_due":
+            st.warning("⚠️ Payment failed — update billing to keep access")
+        elif profile_tier in ("standard", "premium"):
+            st.markdown("✅ **Active**")
+
+        # ── Manage Billing link ──
+        _stripe_key = __import__("os").environ.get("STRIPE_SECRET_KEY", "")
+        if _stripe_key and profile_tier in ("standard", "premium", "past_due"):
+            try:
+                import stripe as _stripe
+                _stripe.api_key = _stripe_key
+                _portal = _stripe.billing_portal.Session.create(
+                    customer=profile.get("stripe_customer_id", ""),
+                    return_url=__import__("os").environ.get("APP_URL", "http://localhost:8501"),
+                )
+                st.markdown(
+                    f"[🔗 Manage Billing]({_portal.url})",
+                    unsafe_allow_html=False,
+                )
+            except Exception:
+                st.markdown(
+                    "[🔗 Manage Billing](mailto:support@sportsbettingplus.com)",
+                    unsafe_allow_html=False,
+                )
+        elif profile_tier in ("standard", "premium", "past_due"):
+            st.markdown(
+                "[🔗 Manage Billing](mailto:support@sportsbettingplus.com)",
+                unsafe_allow_html=False,
+            )
+
         if user.get("is_admin"):
             if st.button("🛠️ Admin Panel", use_container_width=True, key="sidebar_admin"):
                 st.session_state["show_admin"] = not st.session_state.get("show_admin", False)
