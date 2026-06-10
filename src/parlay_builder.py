@@ -187,6 +187,17 @@ def _market_bucket(market: str) -> str:
     return MARKET_BUCKETS.get(market, market)
 
 
+def _game_key(matchup: str) -> str:
+    """
+    Normalize a matchup string for same-game deduplication.
+
+    The Odds API sometimes returns slightly different team name formats
+    across endpoints (e.g. "Indiana Fever" vs "Indiana Fever WNBA").
+    Lowercasing + stripping makes the comparison robust.
+    """
+    return " ".join(str(matchup).lower().split())
+
+
 def _score_and_rank(df: pd.DataFrame) -> pd.DataFrame:
     """Add ev_score column and return sorted copy."""
     if df.empty:
@@ -233,10 +244,10 @@ def build_game_line_legs(game_lines_df: "pd.DataFrame") -> list[dict]:
 
     legs = []
     for _, row in game_lines_df.iterrows():
-        matchup   = row.get("matchup", "")
+        matchup   = str(row.get("matchup", "") or "").strip()
         game_time = row.get("time", "")
-        away      = row.get("away", "")
-        home      = row.get("home", "")
+        away      = str(row.get("away", "") or "").strip()
+        home      = str(row.get("home", "") or "").strip()
 
         # ── Totals (O/U) ──
         total      = row.get("total")
@@ -424,8 +435,8 @@ def build_multi_game_parlay(df: pd.DataFrame, n_legs: int,
         if row.get("ev_score", 0) <= 0:
             continue
 
-        game   = row["team"]
-        player = row["player"]
+        game   = _game_key(row["team"])
+        player = str(row["player"]).lower().strip()
 
         if game in seen_games:
             continue
