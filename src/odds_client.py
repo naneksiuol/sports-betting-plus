@@ -339,6 +339,11 @@ def _fetch_props_for_sport(sport_key: str, markets: list[str], max_events: int =
         fair = _compute_fair(rows_list)
         best_over = g["over_odds"].max()  # already filtered to FD/DK in _fetch_event_odds
         best_imp = _ai(best_over)
+        under_vals = g["under_odds"].dropna() if "under_odds" in g.columns else pd.Series([], dtype=float)
+        avg_under = round(float(under_vals.mean()), 0) if len(under_vals) > 0 else None
+        under_fair = round(1.0 - fair, 4)
+        under_imp = round(_ai(avg_under), 4) if avg_under is not None else None
+        under_edge = round(under_fair - under_imp, 4) if under_imp is not None else None
         records.append({
             "player": player,
             "team": g["team"].iloc[0],
@@ -348,13 +353,18 @@ def _fetch_props_for_sport(sport_key: str, markets: list[str], max_events: int =
             "book_implied": round(best_imp, 4),
             "fair_est": round(fair, 4),
             "edge": round(fair - best_imp, 4),
+            "under_odds": avg_under,
+            "under_implied": under_imp,
+            "under_fair": under_fair,
+            "under_edge": under_edge,
             "game_start": g["game_start"].iloc[0] if "game_start" in g.columns else "",
         })
     consensus = pd.DataFrame(records)
 
     if consensus.empty:
         return consensus
-    cols = ["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge", "game_start"]
+    cols = ["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge",
+            "under_odds", "under_implied", "under_fair", "under_edge", "game_start"]
     return consensus[[c for c in cols if c in consensus.columns]]
 
 

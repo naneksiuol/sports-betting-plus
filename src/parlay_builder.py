@@ -80,6 +80,13 @@ MARKET_BUCKETS = {
     "player_saves":          "nhl_save",
     "player_blocked_shots":  "nhl_block",
     "player_hits":           "nhl_hit",
+    # Game lines
+    "game_total_over":       "game_ou",
+    "game_total_under":      "game_ou",
+    "away_spread":           "game_spread",
+    "home_spread":           "game_spread",
+    "away_ml":               "game_ml",
+    "home_ml":               "game_ml",
 }
 
 
@@ -189,6 +196,141 @@ def _score_and_rank(df: pd.DataFrame) -> pd.DataFrame:
         r["ev_score"] = _ev_score(r)
     ranked = pd.DataFrame(rows)
     return ranked.sort_values("ev_score", ascending=False)
+
+
+# ── Game-Line Leg Builder ─────────────────────────────────────────────────────
+
+def _american_to_implied(odds: float) -> float:
+    if odds > 0:
+        return 100 / (odds + 100)
+    return abs(odds) / (abs(odds) + 100)
+
+
+def _shin_fair_prob(over_odds: float, under_odds: float) -> float:
+    """Simple Shin de-vig for a two-outcome market."""
+    p_over = _american_to_implied(over_odds)
+    p_under = _american_to_implied(under_odds)
+    total = p_over + p_under
+    if total <= 0:
+        return 0.5
+    return p_over / total
+
+
+def build_game_line_legs(game_lines_df: "pd.DataFrame") -> list[dict]:
+    """
+    Convert a game-lines DataFrame (from odds_client.get_game_lines) into
+    parlay-compatible leg dicts.
+
+    Each row produces up to three legs:
+      - game_total_over  / game_total_under
+      - away_spread / home_spread
+      - away_ml / home_ml
+
+    Only legs with positive edge (fair_prob > book_implied) are returned.
+    """
+    if game_lines_df is None or game_lines_df.empty:
+        return []
+
+    legs = []
+    for _, row in game_lines_df.iterrows():
+        matchup   = row.get("matchup", "")
+        game_time = row.get("time", "")
+        away      = row.get("away", "")
+        home      = row.get("home", "")
+
+        # ── Totals (O/U) ──
+        total      = row.get("total")
+        over_odds  = row.get("over_odds")
+        under_odds = row.get("under_odds")
+        if total and over_odds and under_odds:
+            fair_over  = _shin_fair_prob(over_odds, under_odds)
+            fair_under = 1.0 - fair_over
+            over_imp   = _american_to_implied(over_odds)
+            under_imp  = _american_to_implied(under_odds)
+            over_edge  = round(fair_over  - over_imp,  4)
+            under_edge = round(fair_under - under_imp, 4)
+            if over_edge > 0:
+                legs.append({
+                    "player":    f"OVER {total}",
+                    "team":      matchup,
+                    "market":    "game_total_over",
+                    "line":      total,
+                    "over_odds": int(over_odds),
+                    "fair_est":  round(fair_over, 4),
+                    "book_implied": round(over_imp, 4),
+                    "edge":      over_edge,
+                    "game_start": game_time,
+                    "leg_type":  "game_line",
+                })
+            if under_edge > 0:
+                legs.append({
+                    "player":    f"UNDER {total}",
+                    "team":      matchup,
+                    "market":    "game_total_under",
+                    "line":      total,
+                    "over_odds": int(under_odds),  # the bet odds for the under
+                    "fair_est":  round(fair_under, 4),
+                    "book_implied": round(under_imp, 4),
+                    "edge":      under_edge,
+                    "game_start": game_time,
+                    "leg_type":  "game_line",
+                })
+
+        # ── Spreads ──
+        for side, spread, spread_odds in [
+            (away, row.get("away_spread"), row.get("away_spread_odds")),
+            (home, row.get("home_spread"), row.get("home_spread_odds")),
+        ]:
+            if side and spread is not None and spread_odds:
+                # Opponent's spread odds for de-vig
+                opp_odds = row.get("home_spread_odds") if side == away else row.get("away_spread_odds")
+                if opp_odds:
+                    fair = _shin_fair_prob(spread_odds, opp_odds)
+                else:
+                    fair = 0.5
+                imp   = _american_to_implied(spread_odds)
+                edge  = round(fair - imp, 4)
+                mkt   = "away_spread" if side == away else "home_spread"
+                sign  = "+" if spread > 0 else ""
+                if edge > 0:
+                    legs.append({
+                        "player":    f"{side} {sign}{spread}",
+                        "team":      matchup,
+                        "market":    mkt,
+                        "line":      spread,
+                        "over_odds": int(spread_odds),
+                        "fair_est":  round(fair, 4),
+                        "book_implied": round(imp, 4),
+                        "edge":      edge,
+                        "game_start": game_time,
+                        "leg_type":  "game_line",
+                    })
+
+        # ── Moneylines ──
+        for side, ml_odds, opp_odds in [
+            (away, row.get("away_ml"), row.get("home_ml")),
+            (home, row.get("home_ml"), row.get("away_ml")),
+        ]:
+            if side and ml_odds and opp_odds:
+                fair = _shin_fair_prob(ml_odds, opp_odds)
+                imp  = _american_to_implied(ml_odds)
+                edge = round(fair - imp, 4)
+                mkt  = "away_ml" if side == away else "home_ml"
+                if edge > 0:
+                    legs.append({
+                        "player":    f"{side} ML",
+                        "team":      matchup,
+                        "market":    mkt,
+                        "line":      0,
+                        "over_odds": int(ml_odds),
+                        "fair_est":  round(fair, 4),
+                        "book_implied": round(imp, 4),
+                        "edge":      edge,
+                        "game_start": game_time,
+                        "leg_type":  "game_line",
+                    })
+
+    return legs
 
 
 # ── Multi-Game Parlay ─────────────────────────────────────────────────────────
@@ -534,7 +676,8 @@ def build_diverse_sgps(
 
 def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
                         full_df: pd.DataFrame | None = None,
-                        sport: str = "") -> dict:
+                        sport: str = "",
+                        game_lines_df: pd.DataFrame | None = None) -> dict:
     """
     Full parlay report.
     df       — filtered props (used for multi-game parlay leg selection)
@@ -559,6 +702,19 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
                 "stake": stake, "pos_edge_games": 0, "total_games": 0,
                 "games_filtered": games_filtered}
 
+    # Merge game-line legs into the player-prop pool for multi-game parlay selection.
+    # Game-line legs are not added to the SGP pool (same-game correlation risk).
+    game_line_legs = build_game_line_legs(game_lines_df)
+    if game_line_legs:
+        gl_df = pd.DataFrame(game_line_legs)
+        # Align columns so concat works cleanly
+        for col in df.columns:
+            if col not in gl_df.columns:
+                gl_df[col] = None
+        df_with_gl = pd.concat([df, gl_df[df.columns]], ignore_index=True)
+    else:
+        df_with_gl = df
+
     sgp_source = full_df if (full_df is not None and not full_df.empty) else df
     top10 = get_top_candidates(df, min_odds=-300, max_odds=300, n=20, per_market=5)
 
@@ -572,7 +728,7 @@ def build_parlay_report(df: pd.DataFrame, stake: float = 10.0,
     for n in [2, 3, 4, 5]:
         if pos_edge_games < n:
             continue  # not enough qualifying games for this leg count
-        legs = build_multi_game_parlay(df, n_legs=n, min_odds=-300, max_odds=300, min_leg_edge=0.01)
+        legs = build_multi_game_parlay(df_with_gl, n_legs=n, min_odds=-300, max_odds=300, min_leg_edge=0.01)
         if len(legs) == n:
             odds = [r["over_odds"] for r in legs]
             parlays[f"{n}_leg"] = {

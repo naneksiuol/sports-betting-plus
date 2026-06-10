@@ -1730,6 +1730,15 @@ def render_sport_tab(sport: str, use_live: bool):
         confirmed_only = st.toggle("✅ Confirmed plays only",
                                    value=False, key=f"confirmed_{sport}",
                                    help="Show only plays where Power de-vig AND NegBin both agree on edge direction. Highest conviction plays.")
+
+        bet_side = st.radio(
+            "Bet Side",
+            options=["Over", "Under", "Both"],
+            index=0,
+            key=f"bet_side_{sport}",
+            horizontal=True,
+            help="Over: show only over-side props. Under: flip to under odds/edge. Both: show all.",
+        )
         all_teams = sorted(df["team"].dropna().unique())
         # Guard: if session_state has stale team names from a previous day, clear them
         _tkey_live = f"teams_{sport}"
@@ -1803,14 +1812,40 @@ def render_sport_tab(sport: str, use_live: bool):
         df["hot"] = False
 
     cache_key = f"filtered_{sport}"
-    _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
-    _shop_mask = (df["shop_alert"] == True) if (shop_alerts_only and "shop_alert" in df.columns) else pd.Series(True, index=df.index)
-    _hot_mask  = (df["hot"] == True) if (hot_streaks_only and "hot" in df.columns) else pd.Series(True, index=df.index)
-    filtered = df[
-        (df["market"].isin(selected_markets))
-        & (df["edge"] >= edge_threshold)
-        & (df["team"].isin(selected_teams))
-        & (df["player"].str.contains(player_search, case=False, na=False))
+    bet_side = st.session_state.get(f"bet_side_{sport}", "Over")
+
+    # For Under view: swap edge/odds columns so the rest of the pipeline sees
+    # under_edge as "edge" and under_odds as "over_odds". A copy is used so the
+    # raw df is unchanged for charts/SGPs that always show over-side.
+    if bet_side == "Under" and "under_edge" in df.columns:
+        df_view = df.copy()
+        df_view["edge"]        = df_view["under_edge"].fillna(-1)
+        df_view["over_odds"]   = df_view["under_odds"]
+        df_view["book_implied"]= df_view["under_implied"].fillna(df_view["book_implied"])
+        df_view["fair_est"]    = df_view["under_fair"].fillna(df_view["fair_est"])
+        df_view["_side"]       = "Under"
+    elif bet_side == "Both" and "under_edge" in df.columns:
+        # Duplicate rows: original rows (over) + under rows with swapped columns
+        df_over  = df.copy(); df_over["_side"]  = "Over"
+        df_under = df.copy()
+        df_under["edge"]        = df_under["under_edge"].fillna(-1)
+        df_under["over_odds"]   = df_under["under_odds"]
+        df_under["book_implied"]= df_under["under_implied"].fillna(df_under["book_implied"])
+        df_under["fair_est"]    = df_under["under_fair"].fillna(df_under["fair_est"])
+        df_under["_side"]       = "Under"
+        df_view = pd.concat([df_over, df_under], ignore_index=True)
+    else:
+        df_view = df.copy()
+        df_view["_side"] = "Over"
+
+    _conf_mask = (df_view["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df_view.columns) else pd.Series(True, index=df_view.index)
+    _shop_mask = (df_view["shop_alert"] == True) if (shop_alerts_only and "shop_alert" in df_view.columns) else pd.Series(True, index=df_view.index)
+    _hot_mask  = (df_view["hot"] == True) if (hot_streaks_only and "hot" in df_view.columns) else pd.Series(True, index=df_view.index)
+    filtered = df_view[
+        (df_view["market"].isin(selected_markets))
+        & (df_view["edge"] >= edge_threshold)
+        & (df_view["team"].isin(selected_teams))
+        & (df_view["player"].str.contains(player_search, case=False, na=False))
         & _conf_mask
         & _shop_mask
         & _hot_mask
@@ -1992,8 +2027,13 @@ def render_sport_tab(sport: str, use_live: bool):
         # Use saved kelly_multiplier if set (overrides sidebar slider when saved)
         _saved_kelly_mult = float(_persisted_settings.get("kelly_multiplier", kelly_mult))
 
+        _show_side_col = "_side" in filtered.columns and filtered["_side"].nunique() > 1
         base_cols = ["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge"]
-        display_df = filtered[base_cols].copy()
+        if _show_side_col:
+            base_cols = ["_side"] + base_cols
+        display_df = filtered[[c for c in base_cols if c in filtered.columns]].copy()
+        if "_side" in display_df.columns:
+            display_df = display_df.rename(columns={"_side": "Side"})
         display_df["market"] = display_df["market"].map(lambda k: market_labels.get(k, k))
 
         # Confidence score (0–100) — already computed above, wire it in
@@ -2413,8 +2453,15 @@ def render_sport_tab(sport: str, use_live: bool):
         if (_parlay_key not in st.session_state or
                 _now - st.session_state.get(_parlay_ts_key, 0) > 300):
             with st.spinner("⚡ Building parlays & SGPs…"):
+                try:
+                    from odds_client import quota_exhausted as _qe
+                    _gl_ok = not _qe()
+                except Exception:
+                    _gl_ok = True
+                _gl_for_parlay = _get_game_lines_cached(sport) if _gl_ok else None
                 st.session_state[_parlay_key] = build_parlay_report(
-                    filtered, stake=stake, full_df=sgp_pool, sport=sport
+                    filtered, stake=stake, full_df=sgp_pool, sport=sport,
+                    game_lines_df=_gl_for_parlay,
                 )
                 st.session_state[_parlay_ts_key] = _now
         report = st.session_state[_parlay_key]
