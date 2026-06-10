@@ -54,16 +54,25 @@ def _compute_clv(placed_odds: float, reference_odds: float) -> float:
         from edge_model import closing_line_value
         return closing_line_value(placed_odds, reference_odds)
     except Exception:
-        # Fallback if edge_model not available
-        def imp(o):
-            return 1 / _american_to_dec(o)
-        return round((imp(reference_odds) - imp(placed_odds)) * 100, 2)
+        import math as _math
+        try:
+            def _imp(o):
+                o = float(o)
+                return 100 / (100 + abs(o)) if o < 0 else o / (100 + o)
+            p_ref = _imp(reference_odds)
+            p_placed = _imp(placed_odds)
+            if p_ref <= 0 or p_placed <= 0:
+                return 0.0
+            return round(_math.log(p_ref / p_placed) * 100, 2)
+        except Exception:
+            return 0.0
 
 
 def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
             stake: float, book: str = "", notes: str = "",
             sharp_odds: int = None, fair_est: float = None,
-            is_parlay: bool = False, edge: float = None) -> dict:
+            is_parlay: bool = False, edge: float = None,
+            parlay_legs: list = None) -> dict:
     """
     Log a bet. Automatically computes opening CLV if sharp_odds provided.
     sharp_odds = Pinnacle/Consensus line at bet placement time.
@@ -96,6 +105,7 @@ def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
         "clv": None,                  # CLV vs true closing line (filled later)
         "notes": notes,
         "is_parlay": is_parlay,
+        "parlay_legs": parlay_legs or [],
     }
     bets = load_bets()
     bets.append(bet)
@@ -166,6 +176,7 @@ def get_clv_avg(n_recent: int = 30) -> float | None:
 def get_stats() -> dict:
     bets = load_bets()
     settled = [b for b in bets if b["result"] in ("win", "loss", "push")]
+    voids = [b for b in bets if b["result"] == "void"]
     wins = [b for b in settled if b["result"] == "win"]
     losses = [b for b in settled if b["result"] == "loss"]
     pending = [b for b in bets if b["result"] == "pending"]
@@ -173,7 +184,9 @@ def get_stats() -> dict:
     total_staked = sum(b["stake"] for b in settled)
     total_profit = sum(b["profit"] for b in settled if b["profit"] is not None)
     roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
-    win_rate = (len(wins) / len(settled) * 100) if settled else 0
+    # Win rate = wins / (wins + losses), excluding pushes
+    decisive = [b for b in settled if b["result"] in ("win", "loss")]
+    win_rate = (len(wins) / len(decisive) * 100) if decisive else 0
 
     # CLV — prefer closing CLV, fall back to opening CLV
     # Explicit None check to avoid dropping legitimate 0.0 CLV values (falsy `or` bug)
@@ -202,11 +215,21 @@ def get_stats() -> dict:
             by_sport[s]["losses"] += 1
         by_sport[s]["profit"] += b["profit"] or 0
 
+    # Add stake per sport for ROI% calculation
+    for b in settled:
+        s = b["sport"]
+        by_sport[s].setdefault("staked", 0)
+        by_sport[s]["staked"] += b.get("stake", 0)
+    for s in by_sport:
+        staked_s = by_sport[s].get("staked", 0)
+        by_sport[s]["roi"] = round(by_sport[s]["profit"] / staked_s * 100, 1) if staked_s else 0
+
     return {
         "total_bets": len(bets),
         "settled": len(settled),
         "wins": len(wins),
         "losses": len(losses),
+        "voids": len(voids),
         "pending": len(pending),
         "win_rate": round(win_rate, 1),
         "total_staked": round(total_staked, 2),

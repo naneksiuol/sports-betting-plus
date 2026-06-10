@@ -84,7 +84,7 @@ def show_landing(on_login: callable, on_signup: callable):
             <div class="step-num">2</div>
             <div class="step-icon">🧠</div>
             <h3>Edge Model Fires</h3>
-            <p>Our Shin de-vig model flags mispriced props with a positive expected value edge.</p>
+            <p>Our multi-book de-vig model flags mispriced props with a positive expected value edge.</p>
         </div>
         <div class="step-card">
             <div class="step-num">3</div>
@@ -109,7 +109,7 @@ def show_landing(on_login: callable, on_signup: callable):
         <div class="feature-card">
             <div class="feat-icon">📊</div>
             <h4>Multi-Book Edge Model</h4>
-            <p>Shin de-vig across 8+ books pinpoints where FD and DK are priced off the true market.</p>
+            <p>Consensus de-vig across 8+ books pinpoints where FD and DK are priced off the true market.</p>
         </div>
         <div class="feature-card">
             <div class="feat-icon">🎰</div>
@@ -177,7 +177,7 @@ def show_landing(on_login: callable, on_signup: callable):
             <ul class="plan-features">
                 <li><span class="chk">✓</span> Everything in Standard</li>
                 <li><span class="chk">✓</span> Bet tracker + grader</li>
-                <li><span class="chk">✓</span> AI analysis (Groq)</li>
+                <li><span class="chk">✓</span> AI analysis (fast inference)</li>
                 <li><span class="chk">✓</span> Discord alerts</li>
                 <li><span class="chk">✓</span> Near real-time data</li>
                 <li><span class="chk">✓</span> Priority support</li>
@@ -212,7 +212,7 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown("""
     <div class="auth-cta-section">
         <h2 class="auth-cta-title">Ready to get an edge?</h2>
-        <p class="auth-cta-sub">Join thousands of bettors using real data to beat the book.</p>
+        <p class="auth-cta-sub">Join sharp bettors using real data to beat the book.</p>
         <div class="oauth-buttons">
             <div class="oauth-btn google-btn">
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -244,21 +244,13 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="auth-secondary-btns">', unsafe_allow_html=True)
-    sb1, sb2, sb3, sb4 = st.columns(4)
+    sb1, sb2 = st.columns(2)
     with sb1:
-        if st.button("Google Sign-In", key="google_cta", use_container_width=True):
+        if st.button("🔐 Log In", key="bottom_login", use_container_width=True):
             st.session_state["auth_mode"] = "login"
             st.rerun()
     with sb2:
-        if st.button("Apple Sign-In", key="apple_cta", use_container_width=True):
-            st.session_state["auth_mode"] = "login"
-            st.rerun()
-    with sb3:
-        if st.button("Log In", key="bottom_login", use_container_width=True):
-            st.session_state["auth_mode"] = "login"
-            st.rerun()
-    with sb4:
-        if st.button("Sign Up", key="bottom_signup", use_container_width=True):
+        if st.button("🚀 Sign Up Free", key="bottom_signup", use_container_width=True, type="primary"):
             st.session_state["auth_mode"] = "signup"
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -269,7 +261,10 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown("""
     <div class="footer">
         <p>Cancel anytime &nbsp;·&nbsp; No contracts &nbsp;·&nbsp; Billed monthly via Stripe</p>
-        <p class="footer-copy">© 2025 Sports Betting Plus. All rights reserved.</p>
+        <p class="footer-copy">© 2026 Sports Betting Plus. All rights reserved.</p>
+        <p class="footer-copy" style="font-size:0.72rem;margin-top:0.25rem;">For entertainment purposes only. Please bet responsibly. 18+ only.
+        &nbsp;·&nbsp; <a href="#" style="color:#666;">Terms of Service</a>
+        &nbsp;·&nbsp; <a href="#" style="color:#666;">Privacy Policy</a></p>
     </div>
     """, unsafe_allow_html=True)
 
