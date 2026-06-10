@@ -1,9 +1,13 @@
 import json
 import uuid
+import fcntl
+import tempfile
+import os
 from pathlib import Path
 from datetime import datetime
 
 BETS_FILE = Path(__file__).parent.parent / "data" / "bets.json"
+_LOCK_FILE = Path(__file__).parent.parent / "data" / ".bets.lock"
 
 
 def load_bets() -> list[dict]:
@@ -16,7 +20,22 @@ def load_bets() -> list[dict]:
 
 
 def save_bets(bets: list[dict]):
-    BETS_FILE.write_text(json.dumps(bets, indent=2))
+    """Atomic write with file lock to prevent concurrent-write corruption."""
+    BETS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _LOCK_FILE.touch(exist_ok=True)
+    with open(_LOCK_FILE, "r") as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", dir=BETS_FILE.parent, delete=False, suffix=".tmp"
+            )
+            json.dump(bets, tmp, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp.close()
+            os.replace(tmp.name, BETS_FILE)
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
 
 
 def _american_to_dec(odds: float) -> float:
@@ -44,7 +63,7 @@ def _compute_clv(placed_odds: float, reference_odds: float) -> float:
 def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
             stake: float, book: str = "", notes: str = "",
             sharp_odds: int = None, fair_est: float = None,
-            is_parlay: bool = False) -> dict:
+            is_parlay: bool = False, edge: float = None) -> dict:
     """
     Log a bet. Automatically computes opening CLV if sharp_odds provided.
     sharp_odds = Pinnacle/Consensus line at bet placement time.
@@ -70,6 +89,7 @@ def add_bet(sport: str, player: str, prop: str, line: float, odds: int,
         # Sharp line stored at bet time
         "sharp_odds": sharp_odds,
         "fair_est": fair_est,
+        "edge": round(edge, 4) if edge is not None else None,
         "opening_clv": opening_clv,   # CLV vs sharp line at placement
         # Closing line (filled by auto-grader or manually)
         "closing_odds": None,

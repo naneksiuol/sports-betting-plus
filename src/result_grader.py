@@ -56,7 +56,7 @@ MLB_PROP_STAT_MAP = {
     "stolen bases":         ("batting", "stolenBases"),
     "runs scored":          ("batting", "runs"),
     "hitter strikeouts":    ("batting", "strikeOuts"),
-    "hits+runs+rbis":       ("batting", "hits"),
+    "hits+runs+rbis":       None,  # computed below as hits+runs+rbi
     "hits":                 ("batting", "hits"),
     "rbis":                 ("batting", "rbi"),
     "rbi":                  ("batting", "rbi"),
@@ -295,9 +295,16 @@ def _grade_mlb(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
             skipped.append(f"{bet['player']} — not found in boxscores or ESPN")
             continue
 
-        stat_group, stat_field = stat_cfg
-        player_stats_group = pstats.get(stat_group, {})
-        val = player_stats_group.get(stat_field)
+        # hits+runs+rbis is a computed combination, not a single field
+        if stat_cfg is None and market_key == "hits+runs+rbis":
+            b = pstats.get("batting", {})
+            val = b.get("hits", 0) + b.get("runs", 0) + b.get("rbi", 0)
+            if not b:
+                val = None
+        else:
+            stat_group, stat_field = stat_cfg
+            player_stats_group = pstats.get(stat_group, {})
+            val = player_stats_group.get(stat_field)
         if val is None:
             # Player found but no stats for this market = DNP/no AB → void
             if not dry_run:
@@ -561,11 +568,7 @@ def _grade_nhl(bets: list[dict], date_str: str, dry_run: bool) -> tuple[int, lis
             continue
 
         if callable(stat_cfg):
-            if not dry_run:
-                update_result(bet["id"], "void")
-            print(f"  ↩️  [NHL] {bet['player']} — DNP/no stats → VOID")
-            graded += 1
-            continue
+            val = stat_cfg(pstats)
         else:
             val = pstats.get(stat_cfg)
 

@@ -394,7 +394,11 @@ def get_remaining_requests() -> dict:
 
 
 def quota_exhausted() -> bool:
-    if not _api_key():
+    try:
+        key = _api_key()
+    except Exception:
+        return True
+    if not key:
         return True
     return get_remaining_requests().get("requests_remaining", 1) == 0
 
