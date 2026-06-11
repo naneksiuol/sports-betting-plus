@@ -203,6 +203,7 @@ def run_retrain() -> dict:
         "after_cv_auc":    after_unified.get("cv_auc"),
         "n_samples":       after_unified.get("n_samples", before_model.get("n_samples", 0)),
         "status":          after_unified.get("status", "unknown"),
+        "msg":             after_unified.get("msg", ""),
         # Per-sport breakdown
         "per_sport": {
             sport: {
@@ -262,6 +263,7 @@ def run_retrain() -> dict:
         "method":       after_cal.get("method") or before_cal.get("method"),
         "n_trained":    after_cal.get("n_trained", before_cal.get("n_trained", 0)),
         "status":       after_cal.get("status", "unknown"),
+        "msg":          after_cal.get("msg", ""),
     }
 
     # ── 3. Persist log ────────────────────────────────────────────────────────

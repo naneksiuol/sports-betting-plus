@@ -219,7 +219,7 @@ def fmt_grade_report(graded: int, wins: int, losses: int,
         f"{emoji} <b>Nightly Grade Report</b>\n\n"
         f"Graded: <b>{graded}</b> bets\n"
         f"Results: <b>{wins}W / {losses}L / {pushes}P</b>\n"
-        f"Profit: <b>${profit:+.2f}</b>\n"
+        f"All-Time Profit: <b>${profit:+.2f}</b>\n"
         f"All-Time ROI: <b>{roi:+.1f}%</b>\n"
         f"📅 {datetime.now().strftime('%B %d, %Y')}"
     )

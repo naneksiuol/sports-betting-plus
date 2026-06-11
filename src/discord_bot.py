@@ -177,7 +177,7 @@ def send_grade_report(graded: int, wins: int, losses: int,
         "description": (
             f"**Graded:** {graded} bets\n"
             f"**Tonight:** {wins}W / {losses}L / {pushes}P\n"
-            f"**Profit:** ${profit:+.2f}\n"
+            f"**All-Time Profit:** ${profit:+.2f}\n"
             f"**All-Time ROI:** {roi:+.1f}%"
         ),
         "color": color,
@@ -240,12 +240,16 @@ def send_retrain_summary(summary: dict) -> bool:
         f"**CV AUC:**   {_arrow(model.get('before_cv_auc'),   model.get('after_cv_auc'))}",
         f"**Samples:**  {model.get('n_samples', 0)}",
     ]
+    if model_status not in ("ok",) and model.get("msg"):
+        model_lines.append(f"**Detail:** {str(model['msg'])[:200]}")
     cal_lines = [
         f"**Status:** {cal_status}",
         f"**Brier:** {_arrow(cal.get('before_brier'), cal.get('after_brier'), higher_is_better=False)}",
         f"**Method:** {cal.get('method') or 'n/a'}",
         f"**Samples:** {cal.get('n_trained', 0)}",
     ]
+    if cal_status not in ("ok",) and cal.get("msg"):
+        cal_lines.append(f"**Detail:** {str(cal['msg'])[:200]}")
 
     embed = {
         "title": "🤖 Model Retrain Complete",
