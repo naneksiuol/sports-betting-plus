@@ -576,6 +576,27 @@ def _drop_past_games(df: "pd.DataFrame", sport: str) -> "pd.DataFrame":
         return df
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_remote_cache(sport: str, day: str = "") -> dict:
+    """Fetch the freshest props cache straight from GitHub main, so the
+    deployed app sees scheduled-task refreshes without a redeploy.
+    Override the location with PROPS_CACHE_URL_BASE; returns {} on any failure."""
+    import requests
+    base = os.environ.get(
+        "PROPS_CACHE_URL_BASE",
+        "https://raw.githubusercontent.com/naneksiuol/sports-betting-plus/main/data",
+    ).rstrip("/")
+    try:
+        resp = requests.get(f"{base}/props_cache_{sport.lower()}.json", timeout=8)
+        if resp.status_code == 200:
+            payload = resp.json()
+            if isinstance(payload, dict) and payload.get("data"):
+                return payload
+    except Exception:
+        pass
+    return {}
+
+
 def load_data(sport: str, use_live: bool):
     from datetime import date, datetime, timedelta
     _today = date.today().isoformat()
@@ -597,14 +618,19 @@ def load_data(sport: str, use_live: bool):
     except Exception as _scrape_err:
         st.warning(f"{sport} scraper error: {_scrape_err}")
 
-    # Fallback: read locally-scraped cache pushed to repo by scheduled task.
+    # Fallback: scraped cache pushed to repo by the scheduled task.
+    # Prefer the live GitHub copy (always current main) over the local
+    # checkout, which on Streamlit Cloud only updates at redeploy time.
     # Reject the cache outright if it is too old — better to show nothing
     # than to present multi-day-old props as today's board.
     try:
-        _cache_path = Path(__file__).parent.parent / "data" / f"props_cache_{sport.lower()}.json"
-        if _cache_path.exists():
-            import json as _json
-            _payload = _json.loads(_cache_path.read_text(encoding="utf-8"))
+        _payload = _fetch_remote_cache(sport, _today)
+        if not _payload:
+            _cache_path = Path(__file__).parent.parent / "data" / f"props_cache_{sport.lower()}.json"
+            if _cache_path.exists():
+                import json as _json
+                _payload = _json.loads(_cache_path.read_text(encoding="utf-8"))
+        if _payload:
             _records = _payload.get("data", [])
             _scraped_at = _payload.get("scraped_at", "")
             _age_hours = None

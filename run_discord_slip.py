@@ -58,26 +58,53 @@ def save_props_cache(sport: str, df) -> bool:
         return False
 
 
+def _git(args: list, cwd) -> subprocess.CompletedProcess:
+    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
+
+
 def push_cache_to_github():
-    """Git add/commit/push the props cache files so Streamlit Cloud picks them up."""
+    """Git add/commit/push the props cache files so Streamlit Cloud picks them up.
+
+    Rebases onto origin/main before pushing (the push silently failed for days
+    when local main fell behind the remote) and retries with backoff, printing
+    the real git error on failure instead of swallowing it.
+    """
+    import time
     try:
         repo = Path(__file__).parent
         cache_files = list(DATA_DIR.glob("props_cache_*.json"))
         if not cache_files:
             return
         paths = [str(f) for f in cache_files]
-        subprocess.run(["git", "add"] + paths, cwd=repo, check=True, capture_output=True)
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            cwd=repo, capture_output=True
-        )
-        if result.returncode != 0:  # changes staged
-            msg = f"chore: refresh props cache {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            subprocess.run(["git", "commit", "-m", msg], cwd=repo, check=True, capture_output=True)
-            subprocess.run(["git", "push", "origin", "main"], cwd=repo, check=True, capture_output=True)
-            print(f"    [OK] Props cache pushed to GitHub ({len(cache_files)} files)")
-        else:
+
+        r = _git(["add"] + paths, repo)
+        if r.returncode != 0:
+            print(f"    [WARN] git add failed: {r.stderr.strip()}")
+            return
+        if _git(["diff", "--cached", "--quiet"], repo).returncode == 0:
             print("    [INFO] No cache changes to push.")
+            return
+
+        msg = f"chore: refresh props cache {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        r = _git(["commit", "-m", msg], repo)
+        if r.returncode != 0:
+            print(f"    [WARN] git commit failed: {r.stderr.strip() or r.stdout.strip()}")
+            return
+
+        for attempt, delay in ((1, 2), (2, 4), (3, 8), (4, 16)):
+            # Sync with remote first — push is rejected if local main is behind
+            pull = _git(["pull", "--rebase", "origin", "main"], repo)
+            if pull.returncode != 0:
+                _git(["rebase", "--abort"], repo)
+                print(f"    [WARN] git pull --rebase failed: {pull.stderr.strip()}")
+            r = _git(["push", "origin", "main"], repo)
+            if r.returncode == 0:
+                print(f"    [OK] Props cache pushed to GitHub ({len(cache_files)} files)")
+                return
+            print(f"    [WARN] git push attempt {attempt} failed: {r.stderr.strip()}")
+            time.sleep(delay)
+        print("    [ERROR] Could not push props cache after 4 attempts — "
+              "the deployed app will keep serving stale data until this is fixed.")
     except Exception as e:
         print(f"    [WARN] GitHub push failed: {e}")
 
