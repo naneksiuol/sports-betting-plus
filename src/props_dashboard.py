@@ -1759,6 +1759,13 @@ def render_sport_tab(sport: str, use_live: bool):
             help="Show only props where the player hit this line in 4+ of their last 5 games.",
         )
 
+        steam_only = st.toggle(
+            "🔥 Steam moves only",
+            value=False,
+            key=f"steam_{sport}",
+            help="Show only props where sharp money has moved the line (Odds API steam detection).",
+        )
+
         # Reset button
         if st.button("🔄 Reset Filters", use_container_width=True, key=f"reset_{sport}"):
             # Write to shadow keys — read on next run before widgets instantiate
@@ -1767,6 +1774,7 @@ def render_sport_tab(sport: str, use_live: bool):
             for k in [f"teams_{sport}", f"search_{sport}", f"edge_slider_{sport}"]:
                 if k in st.session_state:
                     del st.session_state[k]
+            st.session_state.pop(f"_steam_{sport}", None)
             st.rerun()
 
     # ── Line shopping enrichment — add best_book / shop_alert columns to df ──
@@ -1802,10 +1810,23 @@ def render_sport_tab(sport: str, use_live: bool):
         df["streak"] = ""
         df["hot"] = False
 
+    # Steam move enrichment
+    try:
+        from steam_detector import get_steam_alerts
+        _steam_key = f"_steam_{sport}"
+        if steam_only or _steam_key not in st.session_state:
+            _steam_df = get_steam_alerts(sport)
+            st.session_state[_steam_key] = set(_steam_df["player"].tolist()) if not _steam_df.empty else set()
+        _steam_players = st.session_state.get(_steam_key, set())
+        df["steam_move"] = df["player"].isin(_steam_players)
+    except Exception:
+        df["steam_move"] = False
+
     cache_key = f"filtered_{sport}"
     _conf_mask = (df["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df.columns) else pd.Series(True, index=df.index)
     _shop_mask = (df["shop_alert"] == True) if (shop_alerts_only and "shop_alert" in df.columns) else pd.Series(True, index=df.index)
     _hot_mask  = (df["hot"] == True) if (hot_streaks_only and "hot" in df.columns) else pd.Series(True, index=df.index)
+    _steam_mask = (df["steam_move"] == True) if (steam_only and "steam_move" in df.columns) else pd.Series(True, index=df.index)
     filtered = df[
         (df["market"].isin(selected_markets))
         & (df["edge"] >= edge_threshold)
@@ -1814,6 +1835,7 @@ def render_sport_tab(sport: str, use_live: bool):
         & _conf_mask
         & _shop_mask
         & _hot_mask
+        & _steam_mask
     ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
@@ -2077,9 +2099,13 @@ def render_sport_tab(sport: str, use_live: bool):
             return ""
         display_df["Sharp Line"] = filtered.apply(get_sharp, axis=1)
 
+        if "steam_move" in filtered.columns:
+            display_df["Steam"] = filtered["steam_move"].apply(lambda x: "🔥" if x else "")
+
         # Injury status
-        has_nb   = "NB Δ" in display_df.columns
-        has_conf = "Conf" in display_df.columns
+        has_nb    = "NB Δ" in display_df.columns
+        has_conf  = "Conf" in display_df.columns
+        has_steam = "Steam" in display_df.columns
 
         _shop_cols = (["FD", "DK", "Bet At", "Spread"] if _has_line_shop else [])
 
@@ -2092,6 +2118,7 @@ def render_sport_tab(sport: str, use_live: bool):
                          *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
                          "Move", "Sharp Line",
+                         *(["Steam"] if has_steam else []),
                          "Status"]
         else:
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
@@ -2100,7 +2127,8 @@ def render_sport_tab(sport: str, use_live: bool):
                          "Kelly", "Signal",
                          *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
-                         "Move", "Sharp Line"]
+                         "Move", "Sharp Line",
+                         *(["Steam"] if has_steam else [])]
 
         display_df.columns = col_names
         for col in ["Book Implied", "Fair Est.", "Edge"]:
