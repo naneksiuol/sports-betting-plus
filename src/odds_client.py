@@ -162,6 +162,13 @@ SPORTS_CONFIG = {
 def _api_key():
     key = os.environ.get("ODDS_API_KEY", "")
     if not key:
+        # Streamlit Cloud stores secrets in st.secrets, not os.environ
+        try:
+            import streamlit as st
+            key = st.secrets.get("ODDS_API_KEY", "")
+        except Exception:
+            pass
+    if not key:
         raise ValueError("ODDS_API_KEY not set")
     return key
 

@@ -44,6 +44,12 @@ from bet_tracker import get_clv_avg
 from settings_manager import load_settings, save_settings
 
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
+if not ODDS_API_KEY:
+    try:
+        import streamlit as _st
+        ODDS_API_KEY = _st.secrets.get("ODDS_API_KEY", "")
+    except Exception:
+        pass
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 
@@ -562,7 +568,6 @@ def load_static_mlb() -> pd.DataFrame:
     return df[["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge", "n_books"]]
 
 
-MAX_CACHE_AGE_HOURS = 24      # reject repo cache older than this
 WARN_CACHE_AGE_HOURS = 12     # warn when repo cache is older than this
 
 
@@ -639,17 +644,14 @@ def load_data(sport: str, use_live: bool):
                     _age_hours = (datetime.now() - datetime.fromisoformat(_scraped_at)).total_seconds() / 3600
                 except Exception:
                     pass
-            if _records and _age_hours is not None and _age_hours > MAX_CACHE_AGE_HOURS:
-                st.error(
-                    f"⚠️ {sport} cached props are {_age_hours/24:.1f} days old "
-                    f"(scraped {_scraped_at[:16]}) and live odds are unavailable. "
-                    "Showing nothing instead of stale picks — check that the "
-                    "scheduled scrape job (run_discord_slip) is running."
-                )
-            elif _records:
+            if _records:
                 _cached_df = _drop_past_games(pd.DataFrame(_records), sport)
                 if _age_hours is not None and _age_hours > WARN_CACHE_AGE_HOURS:
-                    st.warning(f"⚠️ {sport} props are from a cache {_age_hours:.0f}h old — odds may have moved.")
+                    st.warning(
+                        f"⚠️ {sport} props are {_age_hours/24:.1f} days old "
+                        f"(scraped {_scraped_at[:16]}) — live odds unavailable. "
+                        "Odds may have moved. Run the scrape job to refresh."
+                    )
                 _source_label = f"cached · {_scraped_at[:16]}" if _scraped_at else "cached"
                 if not _cached_df.empty:
                     return _cached_df, _source_label
