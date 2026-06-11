@@ -553,7 +553,38 @@ def preload_all_sports_parallel(use_live: bool = False):
 def _get_game_lines_cached(sport: str, day: str = "") -> "pd.DataFrame":
     # day is part of the cache key so entries can't survive a date rollover
     from odds_client import get_game_lines
-    return get_game_lines(sport)
+    try:
+        gl = get_game_lines(sport)
+        if not gl.empty:
+            return gl
+    except Exception:
+        pass
+    # Fallback: game-lines cache pushed to GitHub by the scheduled scrape job
+    # (live API is IP-restricted and unreachable from Streamlit Cloud)
+    import requests
+    base = os.environ.get(
+        "PROPS_CACHE_URL_BASE",
+        "https://raw.githubusercontent.com/naneksiuol/sports-betting-plus/main/data",
+    ).rstrip("/")
+    try:
+        resp = requests.get(f"{base}/game_lines_{sport.lower()}.json", timeout=8)
+        if resp.status_code == 200:
+            payload = resp.json()
+            if isinstance(payload, dict) and payload.get("data"):
+                return pd.DataFrame(payload["data"])
+    except Exception:
+        pass
+    # Last resort: local checkout copy of the same cache
+    try:
+        _path = Path(__file__).parent.parent / "data" / f"game_lines_{sport.lower()}.json"
+        if _path.exists():
+            import json as _json
+            payload = _json.loads(_path.read_text(encoding="utf-8"))
+            if payload.get("data"):
+                return pd.DataFrame(payload["data"])
+    except Exception:
+        pass
+    return pd.DataFrame()
 
 
 @st.cache_data(ttl=3600)

@@ -62,6 +62,29 @@ def _git(args: list, cwd) -> subprocess.CompletedProcess:
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
 
 
+def save_game_lines_cache(sport: str) -> bool:
+    """Save game lines to data/game_lines_{sport}.json for the deployed app."""
+    try:
+        from odds_client import get_game_lines
+        gl = get_game_lines(sport)
+        if gl.empty:
+            print(f"    [INFO] No game lines for {sport}.")
+            return False
+        cache_path = DATA_DIR / f"game_lines_{sport.lower()}.json"
+        payload = {
+            "scraped_at": datetime.now().isoformat(),
+            "sport": sport,
+            "rows": len(gl),
+            "data": gl.to_dict(orient="records"),
+        }
+        cache_path.write_text(json.dumps(payload, default=str), encoding="utf-8")
+        print(f"    [SAVED] {len(gl)} game lines to {cache_path.name}")
+        return True
+    except Exception as e:
+        print(f"    [WARN] Game lines cache save failed: {e}")
+        return False
+
+
 def push_cache_to_github():
     """Git add/commit/push the props cache files so Streamlit Cloud picks them up.
 
@@ -72,7 +95,7 @@ def push_cache_to_github():
     import time
     try:
         repo = Path(__file__).parent
-        cache_files = list(DATA_DIR.glob("props_cache_*.json"))
+        cache_files = list(DATA_DIR.glob("props_cache_*.json")) + list(DATA_DIR.glob("game_lines_*.json"))
         if not cache_files:
             return
         paths = [str(f) for f in cache_files]
@@ -131,6 +154,7 @@ def main():
     for sport in SPORTS:
         print(f"  Scraping {sport}…")
         try:
+            save_game_lines_cache(sport)
             df = scrape_props(sport)
             if df.empty:
                 print(f"    No props found for {sport} today — skipping.")
