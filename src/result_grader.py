@@ -2,6 +2,7 @@
 Auto-grades pending bets using free public stat APIs.
 Supported sports: MLB, NBA, WNBA, NHL.
 """
+from __future__ import annotations
 
 import requests
 import json
@@ -698,6 +699,146 @@ def list_pending(date_str: str) -> None:
     print(f"Pending bets for {date_str}:")
     for b in pending:
         print(f"  id={b['id']}  {b.get('sport','?')} | {b['player']} | {b.get('prop','')} | line={b.get('line')}")
+
+
+def auto_grade_pending_bets(user_id: str = None) -> dict:
+    """
+    Auto-grade pending bets using The Odds API /scores endpoint.
+
+    For each pending bet:
+    1. Fetch completed game scores for the bet's sport
+    2. Match the bet to a game by player name or team name
+    3. For player props: ESPN grading is still used (scores endpoint doesn't have player stats)
+    4. For game-line bets (market startswith game_total/away_ml/home_ml/spread):
+       - Use the scores to determine winner/loser/total
+       - Grade the bet automatically
+
+    Returns dict: {graded: int, skipped: int, errors: int, details: list}
+    """
+    import os, requests
+    from bet_tracker import load_bets, update_result
+
+    ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
+    if not ODDS_API_KEY:
+        return {"graded": 0, "skipped": 0, "errors": 0, "details": ["ODDS_API_KEY not set"]}
+
+    from odds_client import SPORTS_CONFIG, ODDS_API_BASE
+
+    bets = load_bets(user_id=user_id)
+    pending = [b for b in bets if b.get("result", "pending") == "pending"]
+
+    if not pending:
+        return {"graded": 0, "skipped": 0, "errors": 0, "details": ["No pending bets"]}
+
+    # Fetch scores for all relevant sports
+    sport_scores = {}
+    sports_needed = set(b.get("sport", "") for b in pending if b.get("sport"))
+
+    for sport in sports_needed:
+        cfg = SPORTS_CONFIG.get(sport)
+        if not cfg or not cfg.get("key"):
+            continue
+        try:
+            resp = requests.get(
+                f"{ODDS_API_BASE}/sports/{cfg['key']}/scores",
+                params={"apiKey": ODDS_API_KEY, "daysFrom": 3, "dateFormat": "iso"},
+                timeout=10,
+            )
+            if resp.ok:
+                sport_scores[sport] = resp.json()
+        except Exception:
+            pass
+
+    graded = 0
+    skipped = 0
+    errors = 0
+    details = []
+
+    for bet in pending:
+        sport = bet.get("sport", "")
+        market = bet.get("prop", "")
+        scores = sport_scores.get(sport, [])
+
+        # Only auto-grade game-line markets (player props need ESPN/manual)
+        is_game_line = any(k in market.lower() for k in ["game_total", "_ml", "_spread", "moneyline", "spread"])
+        if not is_game_line:
+            skipped += 1
+            continue
+
+        # Find completed game matching this bet
+        matched_game = None
+        for game in scores:
+            if not game.get("completed"):
+                continue
+            home = game.get("home_team", "").lower()
+            away = game.get("away_team", "").lower()
+            player = (bet.get("player") or "").lower()
+            # Match by team name appearing in player/notes field
+            if home in player or away in player or home in market.lower() or away in market.lower():
+                matched_game = game
+                break
+
+        if not matched_game:
+            skipped += 1
+            continue
+
+        try:
+            scores_data = matched_game.get("scores") or []
+            score_map = {s["name"]: int(s["score"]) for s in scores_data if s.get("score")}
+            home_score = score_map.get(matched_game["home_team"])
+            away_score = score_map.get(matched_game["away_team"])
+
+            if home_score is None or away_score is None:
+                skipped += 1
+                continue
+
+            total = home_score + away_score
+            result = None
+
+            if "game_total_over" in market.lower() or ("over" in market.lower() and "total" in market.lower()):
+                line = float(bet.get("line") or 0)
+                result = "win" if total > line else ("push" if total == line else "loss")
+            elif "game_total_under" in market.lower() or ("under" in market.lower() and "total" in market.lower()):
+                line = float(bet.get("line") or 0)
+                result = "win" if total < line else ("push" if total == line else "loss")
+            elif "away_ml" in market.lower() or (away_team := matched_game["away_team"].lower()) in market.lower() and "ml" in market.lower():
+                result = "win" if away_score > home_score else "loss"
+            elif "home_ml" in market.lower() or matched_game["home_team"].lower() in market.lower() and "ml" in market.lower():
+                result = "win" if home_score > away_score else "loss"
+
+            if result:
+                profit = None
+                if result == "win":
+                    odds = bet.get("odds", -110)
+                    stake = bet.get("stake", 0)
+                    if odds > 0:
+                        profit = round(stake * odds / 100, 2)
+                    else:
+                        profit = round(stake * 100 / abs(odds), 2)
+                elif result == "loss":
+                    profit = -float(bet.get("stake", 0))
+                elif result == "push":
+                    profit = 0.0
+
+                update_result(bet["id"], result, user_id=user_id)
+                if profit is not None:
+                    from bet_tracker import load_bets, save_bets
+                    all_bets = load_bets(user_id=user_id)
+                    for b in all_bets:
+                        if b["id"] == bet["id"]:
+                            b["profit"] = profit
+                            break
+                    save_bets(all_bets, user_id=user_id)
+
+                graded += 1
+                details.append(f"Graded {bet.get('player','?')} {market}: {result}")
+            else:
+                skipped += 1
+        except Exception as e:
+            errors += 1
+            details.append(f"Error grading {bet.get('id','?')}: {e}")
+
+    return {"graded": graded, "skipped": skipped, "errors": errors, "details": details}
 
 
 if __name__ == "__main__":

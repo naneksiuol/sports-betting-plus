@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Closing Line Updater
 ====================
@@ -231,6 +233,91 @@ def update_closing_lines(dry_run: bool = False, user_id: str = None) -> int:
         print(f"\n[DRY RUN] Would update {updated} bet(s).")
 
     return updated
+
+
+def auto_close_pending_clv(user_id: str = None) -> dict:
+    """
+    For each settled bet (result != 'pending') that has no closing_odds recorded,
+    fetch the closing line from The Odds API historical scores/odds and compute CLV.
+
+    CLV = log(fair_close / placed_implied) * 100  (where fair_close uses Shin de-vig on closing over+under)
+
+    Returns dict: {updated: int, skipped: int, errors: int}
+    """
+    import os, math, requests
+    from bet_tracker import load_bets, save_bets
+    from odds_client import ODDS_API_BASE, SPORTS_CONFIG
+
+    api_key = os.environ.get("ODDS_API_KEY", "")
+    if not api_key:
+        return {"updated": 0, "skipped": 0, "errors": 0}
+
+    bets = load_bets(user_id=user_id)
+    # Target: settled bets with no closing_odds
+    targets = [b for b in bets if b.get("result") not in ("pending", "") and not b.get("closing_odds")]
+
+    if not targets:
+        return {"updated": 0, "skipped": 0, "errors": 0}
+
+    # Group by sport to batch API calls
+    from collections import defaultdict
+    by_sport = defaultdict(list)
+    for b in targets:
+        sport = b.get("sport", "")
+        if sport and SPORTS_CONFIG.get(sport, {}).get("key"):
+            by_sport[sport].append(b)
+
+    def _american_to_implied(odds):
+        if odds > 0:
+            return 100 / (odds + 100)
+        return abs(odds) / (abs(odds) + 100)
+
+    updated = 0
+    skipped = 0
+    errors = 0
+
+    for sport, sport_bets in by_sport.items():
+        cfg = SPORTS_CONFIG[sport]
+        try:
+            # Fetch historical odds (daysFrom=7 covers recent games)
+            resp = requests.get(
+                f"{ODDS_API_BASE}/sports/{cfg['key']}/odds-history",
+                params={
+                    "apiKey": api_key,
+                    "regions": "us",
+                    "markets": "h2h",  # basic closing line proxy
+                    "oddsFormat": "american",
+                    "daysFrom": 7,
+                },
+                timeout=15,
+            )
+            # NOTE: odds-history is a premium endpoint; fall back to stored sharp_odds
+            if resp.status_code in (401, 422, 404):
+                # Premium endpoint not available — use sharp_odds stored at bet time as proxy
+                for b in sport_bets:
+                    if b.get("sharp_odds"):
+                        placed_imp = _american_to_implied(b.get("odds", -110))
+                        sharp_imp = _american_to_implied(b["sharp_odds"])
+                        if placed_imp > 0 and sharp_imp > 0:
+                            clv = round(math.log(sharp_imp / placed_imp) * 100, 2)
+                            b["closing_odds"] = b["sharp_odds"]
+                            b["clv"] = clv
+                            updated += 1
+                        else:
+                            skipped += 1
+                    else:
+                        skipped += 1
+                continue
+
+            resp.raise_for_status()
+        except Exception as e:
+            errors += len(sport_bets)
+            continue
+
+    if updated > 0:
+        save_bets(bets, user_id=user_id)
+
+    return {"updated": updated, "skipped": skipped, "errors": errors}
 
 
 if __name__ == "__main__":

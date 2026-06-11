@@ -607,6 +607,59 @@ def run_ai_summary(stats: dict) -> str:
     return quick_summary(stats)
 
 
+# ── Best Plays Tab ────────────────────────────────────────────────────────────
+def render_best_plays():
+    st.markdown("## 🌟 Best Plays Across All Sports")
+    st.caption("Top value bets ranked by confidence, updated every 5 minutes.")
+
+    _cache_key = "best_plays_cache"
+    _ts_key = "best_plays_ts"
+    import time as _t
+    _now = _t.time()
+
+    if _cache_key not in st.session_state or _now - st.session_state.get(_ts_key, 0) > 300:
+        with st.spinner("Scanning all sports for value..."):
+            try:
+                from cross_sport_summary import get_best_plays_df
+                _bp_df = get_best_plays_df(n=30)
+                st.session_state[_cache_key] = _bp_df
+                st.session_state[_ts_key] = _now
+            except Exception as _e:
+                st.error(f"Could not load best plays: {_e}")
+                return
+
+    _bp_df = st.session_state.get(_cache_key, pd.DataFrame())
+    if _bp_df is None or _bp_df.empty:
+        st.info("No value plays found across sports right now. Check back when games are scheduled.")
+        return
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Plays", len(_bp_df))
+    k2.metric("Sports Covered", _bp_df["sport"].nunique() if "sport" in _bp_df.columns else 0)
+    k3.metric("Avg Edge", f"{_bp_df['edge'].mean():.2%}" if "edge" in _bp_df.columns and len(_bp_df) > 0 else "—")
+    if len(_bp_df) > 0:
+        _best_bp = _bp_df.iloc[0]
+        k4.metric("Best Play", _best_bp.get("player", "?"), delta=f"{_best_bp.get('sport','?')} · {_best_bp.get('edge',0):.2%}")
+
+    def _mkt_label_bp(row):
+        cfg = SPORTS_CONFIG.get(row.get("sport", ""), {})
+        return cfg.get("market_labels", {}).get(row.get("market", ""), row.get("market", ""))
+
+    _disp = _bp_df.copy()
+    _disp["Prop"]       = _disp.apply(_mkt_label_bp, axis=1)
+    _disp["Odds"]       = _disp["over_odds"].apply(lambda x: f"+{int(x)}" if pd.notna(x) and x > 0 else (str(int(x)) if pd.notna(x) else "—"))
+    _disp["Edge"]       = _disp["edge"].apply(lambda x: f"{x:.2%}" if pd.notna(x) else "—")
+    _disp["Confidence"] = _disp["confidence"].apply(lambda x: f"{int(x)}/100" if pd.notna(x) else "—") if "confidence" in _disp.columns else "—"
+    _bp_col_map = {"sport": "Sport", "player": "Player", "team": "Game", "line": "Line"}
+    _bp_show_cols = {c: _bp_col_map.get(c, c) for c in ["sport", "player", "team", "Prop", "line", "Odds", "Edge", "Confidence"] if c in _disp.columns}
+    st.dataframe(_disp[list(_bp_show_cols.keys())].rename(columns=_bp_show_cols), use_container_width=True, hide_index=True)
+
+    if st.button("🔄 Refresh", key="refresh_best_plays"):
+        for _k in [_cache_key, _ts_key]:
+            st.session_state.pop(_k, None)
+        st.rerun()
+
+
 # ── Bet Tracker Tab ───────────────────────────────────────────────────────────
 def render_bet_tracker():
     from bet_tracker import load_bets, add_bet, update_result, delete_bet, get_stats
@@ -714,6 +767,34 @@ def render_bet_tracker():
                 _w.writeheader()
                 _w.writerows(filtered_bets)
                 st.download_button("📥 Export CSV", _buf.getvalue(), "bets.csv", "text/csv", use_container_width=False)
+
+            _ag_col, _clv_col, _ = st.columns([1, 1, 3])
+            with _ag_col:
+                if st.button("🤖 Auto-Grade Pending", key="auto_grade_btn", help="Grade completed game-line bets using Odds API scores"):
+                    _uid_ag = st.session_state.get("user_id")
+                    with st.spinner("Grading pending bets..."):
+                        try:
+                            from result_grader import auto_grade_pending_bets
+                            _ag_result = auto_grade_pending_bets(user_id=_uid_ag)
+                            if _ag_result["graded"] > 0:
+                                st.success(f"✅ Graded {_ag_result['graded']} bets. {_ag_result['skipped']} skipped.")
+                            else:
+                                st.info(f"No game-line bets to auto-grade ({_ag_result.get('skipped',0)} pending props need manual grading).")
+                        except Exception as _e:
+                            st.error(f"Auto-grade error: {_e}")
+            with _clv_col:
+                if st.button("📈 Auto-Close CLV", key="auto_clv_btn", help="Fetch closing odds and compute CLV for settled bets"):
+                    _uid_clv = st.session_state.get("user_id")
+                    with st.spinner("Fetching closing odds..."):
+                        try:
+                            from closing_line_scraper import auto_close_pending_clv
+                            _clv_result = auto_close_pending_clv(user_id=_uid_clv)
+                            if _clv_result.get("updated", 0) > 0:
+                                st.success(f"✅ Updated CLV for {_clv_result['updated']} bets.")
+                            else:
+                                st.info("No bets found needing CLV update.")
+                        except Exception as _e:
+                            st.error(f"CLV update error: {_e}")
 
             for bet in reversed(filtered_bets):
                 result = bet["result"]
@@ -1769,6 +1850,13 @@ def render_sport_tab(sport: str, use_live: bool):
             help="Show only props where the player hit this line in 4+ of their last 5 games.",
         )
 
+        steam_only = st.toggle(
+            "💨 Steam moves only",
+            value=False,
+            key=f"steam_{sport}",
+            help="Show only props where sharp money has recently moved the line (Odds API detection).",
+        )
+
         # Reset button
         if st.button("🔄 Reset Filters", use_container_width=True, key=f"reset_{sport}"):
             # Write to shadow keys — read on next run before widgets instantiate
@@ -1777,6 +1865,7 @@ def render_sport_tab(sport: str, use_live: bool):
             for k in [f"teams_{sport}", f"search_{sport}", f"edge_slider_{sport}"]:
                 if k in st.session_state:
                     del st.session_state[k]
+            st.session_state.pop(f"_steam_{sport}", None)
             st.rerun()
 
     # ── Line shopping enrichment — add best_book / shop_alert columns to df ──
@@ -1812,6 +1901,18 @@ def render_sport_tab(sport: str, use_live: bool):
         df["streak"] = ""
         df["hot"] = False
 
+    # ── Steam move enrichment ─────────────────────────────────────────────────
+    try:
+        from steam_detector import get_steam_alerts
+        _steam_key = f"_steam_{sport}"
+        if steam_only or _steam_key not in st.session_state:
+            _steam_df = get_steam_alerts(sport)
+            st.session_state[_steam_key] = set(_steam_df["player"].tolist()) if not _steam_df.empty else set()
+        _steam_players = st.session_state.get(_steam_key, set())
+        df["steam_move"] = df["player"].isin(_steam_players)
+    except Exception:
+        df["steam_move"] = False
+
     cache_key = f"filtered_{sport}"
     bet_side = st.session_state.get(f"bet_side_{sport}", "Over")
 
@@ -1843,7 +1944,8 @@ def render_sport_tab(sport: str, use_live: bool):
 
     _conf_mask = (df_view["edge_confirmed"] == True) if (confirmed_only and "edge_confirmed" in df_view.columns) else pd.Series(True, index=df_view.index)
     _shop_mask = (df_view["shop_alert"] == True) if (shop_alerts_only and "shop_alert" in df_view.columns) else pd.Series(True, index=df_view.index)
-    _hot_mask  = (df_view["hot"] == True) if (hot_streaks_only and "hot" in df_view.columns) else pd.Series(True, index=df_view.index)
+    _hot_mask   = (df_view["hot"] == True) if (hot_streaks_only and "hot" in df_view.columns) else pd.Series(True, index=df_view.index)
+    _steam_mask = (df_view["steam_move"] == True) if (steam_only and "steam_move" in df_view.columns) else pd.Series(True, index=df_view.index)
     filtered = df_view[
         (df_view["market"].isin(selected_markets))
         & (df_view["edge"] >= edge_threshold)
@@ -1852,6 +1954,7 @@ def render_sport_tab(sport: str, use_live: bool):
         & _conf_mask
         & _shop_mask
         & _hot_mask
+        & _steam_mask
     ].sort_values("edge", ascending=False).copy()
     st.session_state[cache_key] = filtered
     st.session_state[f"edge_{sport}"] = edge_threshold
@@ -2063,6 +2166,9 @@ def render_sport_tab(sport: str, use_live: bool):
                 return "—"
 
         display_df["Kelly"] = filtered.apply(_kelly_display, axis=1)
+
+        if "steam_move" in filtered.columns:
+            display_df["Steam"] = filtered["steam_move"].apply(lambda x: "💨" if x else "")
 
         # Edge signal
         display_df["Signal"] = filtered["edge"].apply(edge_rating)
@@ -3780,13 +3886,17 @@ def main():
 
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
+    all_tab_labels = ["🌟 Best Plays"] + sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
     all_tabs = st.tabs(all_tab_labels)
+
+    with all_tabs[0]:
+        render_best_plays()
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
+    _trailing_count = len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"])
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"])], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[1:-_trailing_count], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
