@@ -715,6 +715,34 @@ def render_bet_tracker():
                 _w.writerows(filtered_bets)
                 st.download_button("📥 Export CSV", _buf.getvalue(), "bets.csv", "text/csv", use_container_width=False)
 
+            _ag_col, _clv_col, _ = st.columns([1, 1, 3])
+            with _ag_col:
+                if st.button("🤖 Auto-Grade Pending", key="auto_grade_btn", help="Grade completed game-line bets using Odds API scores"):
+                    _uid_ag = st.session_state.get("user_id")
+                    with st.spinner("Grading pending bets..."):
+                        try:
+                            from result_grader import auto_grade_pending_bets
+                            _ag_result = auto_grade_pending_bets(user_id=_uid_ag)
+                            if _ag_result["graded"] > 0:
+                                st.success(f"✅ Graded {_ag_result['graded']} bets. {_ag_result['skipped']} skipped.")
+                            else:
+                                st.info(f"No game-line bets to auto-grade ({_ag_result['skipped']} pending props need manual grading).")
+                        except Exception as e:
+                            st.error(f"Auto-grade error: {e}")
+            with _clv_col:
+                if st.button("📈 Auto-Close CLV", key="auto_clv_btn", help="Fetch closing odds and compute CLV for settled bets"):
+                    _uid_clv = st.session_state.get("user_id")
+                    with st.spinner("Fetching closing odds..."):
+                        try:
+                            from closing_line_scraper import auto_close_pending_clv
+                            _clv_result = auto_close_pending_clv(user_id=_uid_clv)
+                            if _clv_result.get("updated", 0) > 0:
+                                st.success(f"✅ Updated CLV for {_clv_result['updated']} bets.")
+                            else:
+                                st.info("No bets found needing CLV update.")
+                        except Exception as e:
+                            st.error(f"CLV update error: {e}")
+
             for bet in reversed(filtered_bets):
                 result = bet["result"]
                 badge = {
