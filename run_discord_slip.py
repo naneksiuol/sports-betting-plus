@@ -38,6 +38,25 @@ except ImportError:
 
 DATA_DIR = Path(__file__).parent / "data"
 
+# Auto-grade settled game-line bets and close CLV before building slip
+print("── Pre-slip: auto-grading pending bets ──")
+try:
+    from result_grader import auto_grade_pending_bets
+    _ag = auto_grade_pending_bets(user_id=None)
+    if _ag.get("graded", 0) > 0:
+        print(f"  Auto-graded {_ag['graded']} bets before slip.")
+except Exception as _e:
+    print(f"  Auto-grade skipped: {_e}")
+
+print("── Pre-slip: closing CLV for settled bets ──")
+try:
+    from closing_line_scraper import auto_close_pending_clv
+    _clv = auto_close_pending_clv(user_id=None)
+    if _clv.get("updated", 0) > 0:
+        print(f"  Updated CLV for {_clv['updated']} bets before slip.")
+except Exception as _e:
+    print(f"  CLV close skipped: {_e}")
+
 
 def save_props_cache(sport: str, df) -> bool:
     """Save scraped props to data/props_cache_{sport}.json for Streamlit Cloud fallback."""
