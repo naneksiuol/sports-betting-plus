@@ -501,7 +501,8 @@ from odds_client import SPORTS_CONFIG
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner="⚡ Fetching live odds...")
-def load_live_data(sport: str) -> tuple:
+def load_live_data(sport: str, day: str = "") -> tuple:
+    # day is part of the cache key so entries can't survive a date rollover
     from odds_client import get_props, quota_exhausted
     exhausted = quota_exhausted()
     df = get_props(sport)
@@ -510,7 +511,8 @@ def load_live_data(sport: str) -> tuple:
 
 
 @st.cache_data(ttl=300, show_spinner="🔵 Scraping Action Network...")
-def load_scraped_data(sport: str) -> pd.DataFrame:
+def load_scraped_data(sport: str, day: str = "") -> pd.DataFrame:
+    # day is part of the cache key so entries can't survive a date rollover
     from scraper import scrape_props
     return scrape_props(sport)
 
@@ -523,17 +525,20 @@ def preload_all_sports_parallel(use_live: bool = False):
     """
     if st.session_state.get("_sports_preloaded"):
         return
+    from datetime import date as _date
+    _today = _date.today().isoformat()
     live_sports = [s for s, cfg in SPORTS_CONFIG.items() if cfg.get("status", "live") == "live"]
     for s in live_sports:
         try:
-            load_scraped_data(s)
+            load_scraped_data(s, _today)
         except Exception:
             pass
     st.session_state["_sports_preloaded"] = True
 
 
 @st.cache_data(ttl=300)
-def _get_game_lines_cached(sport: str) -> "pd.DataFrame":
+def _get_game_lines_cached(sport: str, day: str = "") -> "pd.DataFrame":
+    # day is part of the cache key so entries can't survive a date rollover
     from odds_client import get_game_lines
     return get_game_lines(sport)
 
@@ -557,40 +562,75 @@ def load_static_mlb() -> pd.DataFrame:
     return df[["player", "team", "market", "line", "over_odds", "book_implied", "fair_est", "edge", "n_books"]]
 
 
+MAX_CACHE_AGE_HOURS = 24      # reject repo cache older than this
+WARN_CACHE_AGE_HOURS = 12     # warn when repo cache is older than this
+
+
+def _drop_past_games(df: "pd.DataFrame", sport: str) -> "pd.DataFrame":
+    """Remove props from games that already started/finished (keeps rows
+    without game_start — fail-open)."""
+    try:
+        from parlay_builder import filter_live_games
+        return filter_live_games(df, sport)
+    except Exception:
+        return df
+
+
 def load_data(sport: str, use_live: bool):
+    from datetime import date, datetime, timedelta
+    _today = date.today().isoformat()
+
     # Try live API first if toggle is on and key is present
     if use_live and ODDS_API_KEY:
         try:
-            df, source = load_live_data(sport)
+            df, source = load_live_data(sport, _today)
             if not df.empty:
-                return df, source
+                return _drop_past_games(df, sport), source
         except Exception as e:
             st.warning(f"Live odds unavailable ({e}). Falling back to scraped data.")
 
     # Always try scraper as fallback (no API key needed)
     try:
-        df = load_scraped_data(sport)
+        df = load_scraped_data(sport, _today)
         if not df.empty:
-            return df, "scraped"
+            return _drop_past_games(df, sport), "scraped"
     except Exception as _scrape_err:
         st.warning(f"{sport} scraper error: {_scrape_err}")
 
-    # Fallback: read locally-scraped cache pushed to repo by scheduled task
+    # Fallback: read locally-scraped cache pushed to repo by scheduled task.
+    # Reject the cache outright if it is too old — better to show nothing
+    # than to present multi-day-old props as today's board.
     try:
         _cache_path = Path(__file__).parent.parent / "data" / f"props_cache_{sport.lower()}.json"
         if _cache_path.exists():
             import json as _json
             _payload = _json.loads(_cache_path.read_text(encoding="utf-8"))
             _records = _payload.get("data", [])
-            if _records:
-                _cached_df = pd.DataFrame(_records)
-                _scraped_at = _payload.get("scraped_at", "")
+            _scraped_at = _payload.get("scraped_at", "")
+            _age_hours = None
+            if _scraped_at:
+                try:
+                    _age_hours = (datetime.now() - datetime.fromisoformat(_scraped_at)).total_seconds() / 3600
+                except Exception:
+                    pass
+            if _records and _age_hours is not None and _age_hours > MAX_CACHE_AGE_HOURS:
+                st.error(
+                    f"⚠️ {sport} cached props are {_age_hours/24:.1f} days old "
+                    f"(scraped {_scraped_at[:16]}) and live odds are unavailable. "
+                    "Showing nothing instead of stale picks — check that the "
+                    "scheduled scrape job (run_discord_slip) is running."
+                )
+            elif _records:
+                _cached_df = _drop_past_games(pd.DataFrame(_records), sport)
+                if _age_hours is not None and _age_hours > WARN_CACHE_AGE_HOURS:
+                    st.warning(f"⚠️ {sport} props are from a cache {_age_hours:.0f}h old — odds may have moved.")
                 _source_label = f"cached · {_scraped_at[:16]}" if _scraped_at else "cached"
-                return _cached_df, _source_label
+                if not _cached_df.empty:
+                    return _cached_df, _source_label
     except Exception:
         pass
 
-    # Last resort: static CSV for MLB hits only
+    # Last resort: static CSV for MLB hits only (historical demo data — label it)
     if sport == "MLB":
         return load_static_mlb(), "static"
     return pd.DataFrame(), "unavailable"
@@ -1907,8 +1947,8 @@ def render_sport_tab(sport: str, use_live: bool):
             _aui.show_upgrade_modal("standard", key=f"game_lines_{sport}")
         else:
             try:
-                from odds_client import get_game_lines
-                gl = _get_game_lines_cached(sport)
+                from datetime import date as _date
+                gl = _get_game_lines_cached(sport, _date.today().isoformat())
             except Exception:
                 gl = pd.DataFrame()
 

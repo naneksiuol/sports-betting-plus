@@ -447,8 +447,19 @@ def get_game_lines(sport: str) -> pd.DataFrame:
         except Exception:
             return pd.DataFrame()
 
+    from datetime import datetime, timezone, timedelta
+    _cutoff = datetime.now(timezone.utc) - timedelta(hours=5)
+
     rows = []
     for event in events:
+        # Skip games that started long ago (yesterday's slate, finished games)
+        _ct = event.get("commence_time", "")
+        if _ct:
+            try:
+                if datetime.fromisoformat(_ct.replace("Z", "+00:00")) < _cutoff:
+                    continue
+            except Exception:
+                pass
         home = event.get("home_team", "")
         away = event.get("away_team", "")
         matchup = f"{away} @ {home}"
