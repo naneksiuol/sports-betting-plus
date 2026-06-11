@@ -1,12 +1,31 @@
 """
-Constants and helper functions shared across the sports-betting-plus codebase.
-
-Action Network scraping has been removed. Game lines and props now come from
-odds_client.py (The Odds API). scrape_game_lines() and scrape_props() are kept
-as thin shims so legacy import sites continue to work without errors.
+Fallback scraper using Action Network's public API.
+Used automatically when The Odds API quota is exhausted.
+No API key required.
 """
 
+import requests
+import time as _time
 import pandas as pd
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+
+def _get_with_retry(url, *, params=None, timeout=12, max_retries=3):
+    """GET with exponential backoff. Returns Response or raises on final failure."""
+    delay = 2
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last_exc = e
+            if attempt < max_retries - 1:
+                _time.sleep(delay)
+                delay *= 2
+    raise last_exc
 
 # FanDuel NJ (69) and DraftKings NJ (68) — bet targets, must have over to be shown
 # Consensus (15) — market consensus line, posts BOTH sides on every prop: best fair-prob calibrator
@@ -84,27 +103,317 @@ def _avg_line(values: list) -> float | None:
     return round(sum(clean) / len(clean), 1) if clean else None
 
 
-def scrape_game_lines(sport: str) -> pd.DataFrame:
+def scrape_game_lines(sport: str) -> "pd.DataFrame":
     """
-    Game lines now come from odds_client.get_game_lines(). This shim exists
-    so legacy import sites continue to work. Returns an empty DataFrame.
+    Scrape consensus game lines from Action Network scoreboard.
+    Returns one row per game with:
+      matchup, time, away, home,
+      away_ml, home_ml,
+      away_spread, away_spread_odds, home_spread, home_spread_odds,
+      total, over_odds, under_odds,
+      away_team_total, home_team_total,
+      ml_away_public, ml_home_public,
+      ml_away_money, ml_home_money
     """
-    print(f"[scraper] scrape_game_lines({sport!r}) is deprecated — use odds_client.get_game_lines() instead.")
-    return pd.DataFrame()
+    games = _get_games(sport)
+    if not games:
+        return pd.DataFrame()
+
+    rows = []
+    for game in games:
+        teams = game.get("teams", [])
+        away_id = game.get("away_team_id")
+        away, home = "", ""
+        for t in teams:
+            if t.get("id") == away_id:
+                away = t.get("abbr", t.get("display_name", ""))
+            else:
+                home = t.get("abbr", t.get("display_name", ""))
+
+        matchup = f"{away} @ {home}" if away and home else f"Game {game['id']}"
+        start = game.get("start_time", "")
+        if start:
+            start = start[:16].replace("T", " ")
+
+        odds_list = game.get("odds", [])
+        if not odds_list:
+            continue
+
+        away_mls, home_mls = [], []
+        away_spreads, away_spread_lines = [], []
+        home_spreads, home_spread_lines = [], []
+        totals, overs, unders = [], [], []
+        away_totals, home_totals = [], []
+        away_pub, home_pub = [], []
+        away_money, home_money = [], []
+
+        for o in odds_list:
+            if not isinstance(o, dict):
+                continue
+            if o.get("ml_away"):    away_mls.append(o["ml_away"])
+            if o.get("ml_home"):    home_mls.append(o["ml_home"])
+            if o.get("spread_away") is not None: away_spreads.append(o["spread_away"])
+            if o.get("spread_away_line"):        away_spread_lines.append(o["spread_away_line"])
+            if o.get("spread_home") is not None: home_spreads.append(o["spread_home"])
+            if o.get("spread_home_line"):        home_spread_lines.append(o["spread_home_line"])
+            if o.get("total"):      totals.append(o["total"])
+            if o.get("over"):       overs.append(o["over"])
+            if o.get("under"):      unders.append(o["under"])
+            if o.get("away_total"): away_totals.append(o["away_total"])
+            if o.get("home_total"): home_totals.append(o["home_total"])
+            if o.get("ml_away_public"):  away_pub.append(o["ml_away_public"])
+            if o.get("ml_home_public"):  home_pub.append(o["ml_home_public"])
+            if o.get("ml_away_money"):   away_money.append(o["ml_away_money"])
+            if o.get("ml_home_money"):   home_money.append(o["ml_home_money"])
+
+        rows.append({
+            "matchup":          matchup,
+            "time":             start,
+            "away":             away,
+            "home":             home,
+            "away_ml":          _avg_odds(away_mls),
+            "home_ml":          _avg_odds(home_mls),
+            "away_spread":      _avg_line(away_spreads),
+            "away_spread_odds": _avg_odds(away_spread_lines),
+            "home_spread":      _avg_line(home_spreads),
+            "home_spread_odds": _avg_odds(home_spread_lines),
+            "total":            _avg_line(totals),
+            "over_odds":        _avg_odds(overs),
+            "under_odds":       _avg_odds(unders),
+            "away_team_total":  _avg_line(away_totals),
+            "home_team_total":  _avg_line(home_totals),
+            "ml_away_public":   _avg_line(away_pub),
+            "ml_home_public":   _avg_line(home_pub),
+            "ml_away_money":    _avg_line(away_money),
+            "ml_home_money":    _avg_line(home_money),
+        })
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+def _get_games(sport: str) -> list[dict]:
+    slug = SPORT_SLUG.get(sport, sport.lower())
+    r = _get_with_retry(
+        f"https://api.actionnetwork.com/web/v1/scoreboard/{slug}",
+        params={"period": "game", "bookIds": BOOK_IDS},
+    )
+    return r.json().get("games", [])
+
+
+def _get_props_for_game(game_id: int) -> dict:
+    try:
+        r = _get_with_retry(
+            f"https://api.actionnetwork.com/web/v2/games/{game_id}/props",
+            timeout=8,
+        )
+        return r.json()
+    except Exception:
+        return {}
+
+
+def _process_game_props(game: dict) -> tuple[str, dict]:
+    """Fetch and return (matchup, props_data) for one game. For parallel use."""
+    game_id = game["id"]
+    teams = game.get("teams", [])
+    away_id = game.get("away_team_id")
+    away, home = "", ""
+    for t in teams:
+        if t.get("id") == away_id:
+            away = t.get("abbr", t.get("display_name", ""))
+        else:
+            home = t.get("abbr", t.get("display_name", ""))
+    matchup = f"{away} @ {home}" if away and home else f"Game {game_id}"
+    data = _get_props_for_game(game_id)
+    return matchup, data
 
 
 def scrape_props(sport: str) -> pd.DataFrame:
     """
-    Delegate to odds_client._fetch_props_for_sport() if available.
-    Falls back to an empty DataFrame if odds_client cannot be imported.
+    Scrape player props from Action Network — all games fetched in parallel.
+    Only returns props available on FanDuel (69) or DraftKings (68).
+    Uses Shin de-vig for fair probability.
     """
-    try:
-        from odds_client import _fetch_props_for_sport, SPORTS_CONFIG
-        cfg = SPORTS_CONFIG.get(sport)
-        if not cfg or not cfg.get("key") or not cfg.get("markets"):
-            print(f"[scraper] scrape_props({sport!r}): no config found in odds_client — returning empty DataFrame.")
-            return pd.DataFrame()
-        return _fetch_props_for_sport(cfg["key"], cfg["markets"])
-    except ImportError:
-        print("[scraper] scrape_props: could not import odds_client — returning empty DataFrame.")
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from edge_model import consensus_fair_prob, american_to_implied as _imp
+
+    games = _get_games(sport)
+    if not games:
         return pd.DataFrame()
+
+    rows = []
+
+    game_results = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(_process_game_props, g): g for g in games}
+        for future in as_completed(futures):
+            try:
+                matchup, data = future.result()
+                if data:
+                    game_results[matchup] = data
+            except Exception:
+                pass
+
+    for matchup, data in game_results.items():
+
+        player_props = data.get("player_props", {})
+        players = data.get("players", {})
+
+        for prop_type_key, prop_list in player_props.items():
+            market = PROP_TYPE_MAP.get(prop_type_key)
+            if not market:
+                continue
+            if not isinstance(prop_list, list):
+                prop_list = [prop_list]
+
+            for prop in prop_list:
+                player_id = prop.get("player_id")
+                player_name = prop.get("player_abbr", "Unknown")
+                if player_id:
+                    pid_str = str(player_id)
+                    pid_int = int(player_id) if str(player_id).isdigit() else None
+                    player_info = players.get(pid_str) or players.get(pid_int) or {}
+                    if player_info:
+                        player_name = player_info.get("full_name", player_name)
+
+                lines = prop.get("lines", {})
+                book_over: dict = {}
+                book_under: dict = {}
+                line_val = 0.5
+                fd_over: float | None = None
+                dk_over: float | None = None
+                espn_over: float | None = None
+                consensus_over: float | None = None
+                consensus_under: float | None = None
+                open_over: float | None = None
+                open_under: float | None = None
+
+                # Find canonical line from Consensus (15) or Open (30) first
+                canonical_val: float | None = None
+                for bid_check in [CONSENSUS_ID, OPEN_ID, FD_ID, DK_ID]:
+                    blines = lines.get(bid_check) or lines.get(
+                        int(bid_check) if str(bid_check).isdigit() else bid_check, [])
+                    if not isinstance(blines, list):
+                        blines = [blines]
+                    for l in blines:
+                        if l.get("side", "").lower() == "over" and l.get("value") is not None:
+                            canonical_val = float(l["value"])
+                            break
+                    if canonical_val is not None:
+                        break
+                if canonical_val is None:
+                    continue
+
+                line_val = canonical_val
+
+                for book_id, book_lines in lines.items():
+                    if not isinstance(book_lines, list):
+                        continue
+                    for line in book_lines:
+                        if not isinstance(line, dict):
+                            continue
+                        odds = line.get("odds")
+                        val = line.get("value")
+                        side = line.get("side", "").lower()
+                        if odds is None or odds == 0:
+                            continue
+                        if val is not None and float(val) != canonical_val:
+                            continue
+                        if side == "over":
+                            if book_id not in book_over:
+                                book_over[book_id] = float(odds)
+                            if str(book_id) == FD_ID and fd_over is None:
+                                fd_over = float(odds)
+                            elif str(book_id) == DK_ID and dk_over is None:
+                                dk_over = float(odds)
+                            elif str(book_id) == ESPN_ID and espn_over is None:
+                                espn_over = float(odds)
+                            elif str(book_id) == CONSENSUS_ID and consensus_over is None:
+                                consensus_over = float(odds)
+                            elif str(book_id) == OPEN_ID and open_over is None:
+                                open_over = float(odds)
+                        elif side == "under":
+                            if book_id not in book_under:
+                                book_under[book_id] = float(odds)
+                            if str(book_id) == CONSENSUS_ID and consensus_under is None:
+                                consensus_under = float(odds)
+                            elif str(book_id) == OPEN_ID and open_under is None:
+                                open_under = float(odds)
+
+                if fd_over is None and dk_over is None:
+                    continue
+
+                fd_dk_odds = [o for o in [fd_over, dk_over, espn_over] if o is not None]
+                best_over_odds = max(fd_dk_odds)
+                best_over_implied = _imp(best_over_odds)
+
+                books_available = []
+                if fd_over is not None:
+                    books_available.append("FD")
+                if dk_over is not None:
+                    books_available.append("DK")
+                if espn_over is not None:
+                    books_available.append("ESPN")
+                book_tag = "/".join(books_available)
+
+                from edge_model import power_devig, shin_devig
+                if consensus_over is not None and consensus_under is not None:
+                    fair_est = power_devig(_imp(consensus_over), _imp(consensus_under))
+                    fair_est_shin_ref = shin_devig(_imp(consensus_over), _imp(consensus_under))
+                elif open_over is not None and open_under is not None:
+                    fair_est = power_devig(_imp(open_over), _imp(open_under))
+                    fair_est_shin_ref = shin_devig(_imp(open_over), _imp(open_under))
+                else:
+                    fair_est = consensus_fair_prob(book_over, book_under, method="power")
+                    fair_est_shin_ref = consensus_fair_prob(book_over, book_under, method="shin")
+                    if fair_est is None:
+                        if book_over:
+                            all_imps = [_imp(o) for o in book_over.values()]
+                            fair_est = (sum(all_imps) / len(all_imps)) / 1.07
+                            fair_est_shin_ref = fair_est
+                        else:
+                            continue
+                        if fair_est_shin_ref is None:
+                            fair_est_shin_ref = fair_est
+                fair_est = min(fair_est, 0.99)
+                fair_est_shin_ref = min(fair_est_shin_ref if fair_est_shin_ref is not None else fair_est, 0.99)
+
+                from edge_model import negbin_fair_prob, MARKET_DISPERSION, DEFAULT_DISPERSION
+                r_disp = MARKET_DISPERSION.get(market, DEFAULT_DISPERSION)
+                fair_est_nb = negbin_fair_prob(line_val, fair_est, r_disp)
+
+                edge         = round(fair_est - best_over_implied, 4)
+                edge_negbin  = round(fair_est_nb - best_over_implied, 4)
+                edge_confirmed = (fair_est > best_over_implied) == (fair_est_nb > best_over_implied)
+
+                rows.append({
+                    "player":           player_name,
+                    "team":             matchup,
+                    "market":           market,
+                    "line":             line_val,
+                    "over_odds":        round(best_over_odds),
+                    "book_implied":     round(best_over_implied, 4),
+                    "fair_est":         round(fair_est, 4),
+                    "fair_est_shin":    round(fair_est_shin_ref, 4),
+                    "fair_est_negbin":  round(fair_est_nb, 4),
+                    "edge":             edge,
+                    "edge_negbin":      edge_negbin,
+                    "edge_confirmed":   edge_confirmed,
+                    "negbin_delta":     round(fair_est_nb - fair_est, 4),
+                    "n_books":          len(fd_dk_odds),
+                    "books":            book_tag,
+                    "fd_odds":          round(fd_over) if fd_over is not None else None,
+                    "dk_odds":          round(dk_over) if dk_over is not None else None,
+                    "espn_odds":        round(espn_over) if espn_over is not None else None,
+                })
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df = df[df["player"] != "Unknown"]
+    df = df.drop_duplicates(subset=["player", "market", "line"])
+    cols = ["player", "team", "market", "line", "over_odds",
+            "book_implied", "fair_est", "fair_est_shin", "fair_est_negbin",
+            "edge", "edge_negbin", "edge_confirmed",
+            "negbin_delta", "n_books", "books", "fd_odds", "dk_odds", "espn_odds"]
+    return df[[c for c in cols if c in df.columns]]

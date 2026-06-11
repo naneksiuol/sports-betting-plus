@@ -381,7 +381,13 @@ def get_props(sport: str) -> pd.DataFrame:
         except Exception:
             pass
 
-    return pd.DataFrame()
+    # Quota exhausted or API unavailable — fall back to Action Network scraper
+    try:
+        from scraper import scrape_props as _an_scrape
+        print(f"[odds_client] Falling back to Action Network scraper for {sport}.")
+        return _an_scrape(sport)
+    except Exception:
+        return pd.DataFrame()
 
 
 _quota_cache: dict = {"remaining": None, "checked_at": 0.0}
