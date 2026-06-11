@@ -115,8 +115,10 @@ def push_cache_to_github():
             return
 
         for attempt, delay in ((1, 2), (2, 4), (3, 8), (4, 16)):
-            # Sync with remote first — push is rejected if local main is behind
+            # Stash any unstaged changes so rebase doesn't fail, then restore them
+            _git(["stash", "--include-untracked", "-m", "pre-push-stash"], repo)
             pull = _git(["pull", "--rebase", "origin", "main"], repo)
+            _git(["stash", "pop"], repo)
             if pull.returncode != 0:
                 _git(["rebase", "--abort"], repo)
                 print(f"    [WARN] git pull --rebase failed: {pull.stderr.strip()}")
