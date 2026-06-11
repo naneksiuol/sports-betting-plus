@@ -233,6 +233,21 @@ def update_closing_lines(dry_run: bool = False, user_id: str = None) -> int:
     return updated
 
 
+# ── Public alias expected by props_dashboard / test harness ──────────────────
+
+def auto_close_pending_clv(dry_run: bool = False, user_id: str = None) -> int:
+    """
+    Alias for update_closing_lines() — fetches closing odds for all pending
+    bets missing CLV and writes results back.
+
+    Falls back to ``sharp_odds`` stored at bet time when ODDS_API_KEY is not
+    set (handled transparently inside ``update_closing_lines``).
+
+    Returns count of bets updated.
+    """
+    return update_closing_lines(dry_run=dry_run, user_id=user_id)
+
+
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()

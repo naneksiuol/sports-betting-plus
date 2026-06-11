@@ -80,6 +80,22 @@ MARKET_BUCKETS = {
     "player_saves":          "nhl_save",
     "player_blocked_shots":  "nhl_block",
     "player_hits":           "nhl_hit",
+    # Game lines
+    "game_total_over":       "game_ou",
+    "game_total_under":      "game_ou",
+    "away_spread":           "game_spread",
+    "home_spread":           "game_spread",
+    "away_ml":               "game_ml",
+    "home_ml":               "game_ml",
+}
+
+GAME_LINE_LABELS = {
+    "game_total_over":  "Game Total Over",
+    "game_total_under": "Game Total Under",
+    "away_spread":      "Away Spread",
+    "home_spread":      "Home Spread",
+    "away_ml":          "Away Moneyline",
+    "home_ml":          "Home Moneyline",
 }
 
 

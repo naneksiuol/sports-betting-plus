@@ -700,6 +700,15 @@ def list_pending(date_str: str) -> None:
         print(f"  id={b['id']}  {b.get('sport','?')} | {b['player']} | {b.get('prop','')} | line={b.get('line')}")
 
 
+# ── Public alias expected by props_dashboard / test harness ──────────────────
+def auto_grade_pending_bets(target_date: str = None, dry_run: bool = False) -> dict:
+    """
+    Alias for grade_pending_bets() — grades all pending bets for target_date.
+    Handles missing ODDS_API_KEY gracefully (grader uses free public stat APIs only).
+    """
+    return grade_pending_bets(target_date=target_date, dry_run=dry_run)
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     dry = "--dry-run" in args

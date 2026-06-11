@@ -314,6 +314,26 @@ def steam_summary(flags: list[dict]) -> dict:
     }
 
 
+# ── Public alias expected by props_dashboard / test harness ──────────────────
+
+def get_steam_alerts(min_move: float = STEAM_CENTS_WEAK) -> list[dict]:
+    """
+    Convenience wrapper that loads snapshots and returns steam flags.
+
+    Handles the first-call case gracefully: if no snapshot file exists yet,
+    ``load_snapshots`` returns an empty dict and ``detect_steam_moves`` returns
+    an empty list — no exception is raised.
+
+    Parameters
+    ----------
+    min_move : float
+        Minimum implied-probability move (as a fraction) to flag.
+        Default = STEAM_CENTS_WEAK (0.03).
+    """
+    snaps = load_snapshots()   # returns {} when file missing — safe first call
+    return detect_steam_moves(snaps, min_move=min_move)
+
+
 if __name__ == "__main__":
     snaps = load_snapshots()
     print(f"Snapshot days: {list(snaps.keys())}")
