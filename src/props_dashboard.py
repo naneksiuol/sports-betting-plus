@@ -43,13 +43,18 @@ from edge_model import (
 from bet_tracker import get_clv_avg
 from settings_manager import load_settings, save_settings
 
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
-if not ODDS_API_KEY:
-    try:
-        import streamlit as _st
-        ODDS_API_KEY = _st.secrets.get("ODDS_API_KEY", "")
-    except Exception:
-        pass
+def _get_odds_api_key() -> str:
+    """Read ODDS_API_KEY from env or Streamlit secrets (Cloud)."""
+    key = os.environ.get("ODDS_API_KEY", "")
+    if not key:
+        try:
+            import streamlit as _st
+            key = _st.secrets.get("ODDS_API_KEY", "")
+        except Exception:
+            pass
+    return key
+
+ODDS_API_KEY = _get_odds_api_key()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 
@@ -510,6 +515,8 @@ from odds_client import SPORTS_CONFIG
 def load_live_data(sport: str, day: str = "") -> tuple:
     # day is part of the cache key so entries can't survive a date rollover
     from odds_client import get_props, quota_exhausted
+    if not _get_odds_api_key():
+        return pd.DataFrame(), "unavailable"
     exhausted = quota_exhausted()
     df = get_props(sport)
     source = "scraped" if exhausted else "live"
@@ -607,7 +614,7 @@ def load_data(sport: str, use_live: bool):
     _today = date.today().isoformat()
 
     # Try live API first if toggle is on and key is present
-    if use_live and ODDS_API_KEY:
+    if use_live and _get_odds_api_key():
         try:
             df, source = load_live_data(sport, _today)
             if not df.empty:
@@ -3563,8 +3570,9 @@ def main():
 """, unsafe_allow_html=True)
         st.divider()
         st.markdown("## ⚙️ Settings")
-        use_live = st.toggle("Live Odds (The Odds API)", value=bool(ODDS_API_KEY),
-                             disabled=not bool(ODDS_API_KEY))
+        _live_key = _get_odds_api_key()
+        use_live = st.toggle("Live Odds (The Odds API)", value=bool(_live_key),
+                             disabled=not bool(_live_key))
         st.divider()
         st.markdown("## 💰 Kelly Bankroll")
         bankroll = st.number_input("My Bankroll ($)", min_value=10.0, max_value=1000000.0,
