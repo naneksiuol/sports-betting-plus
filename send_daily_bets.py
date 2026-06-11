@@ -357,7 +357,7 @@ def _scrape_all_sports() -> dict:
                 sports_data[sport] = {"df": df, "report": {}}
                 continue
             filtered = df[df["edge"] >= MIN_EDGE_THRESHOLD].copy()
-            report   = build_parlay_report(filtered, full_df=df)
+            report   = build_parlay_report(filtered, full_df=df, sport=sport)
             sports_data[sport] = {"df": filtered, "report": report}
         except Exception as e:
             print(f"Warning: could not load {sport}: {e}")

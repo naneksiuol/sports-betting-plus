@@ -121,7 +121,7 @@ def main():
             picks = df_edge.sort_values("edge", ascending=False).to_dict("records")
             print(f"    {len(picks)} positive-edge props — building report…")
 
-            report = build_parlay_report(df_edge, stake=10.0)
+            report = build_parlay_report(df_edge, stake=10.0, sport=sport)
             parlays = report.get("parlays", {})
 
             ok = send_daily_slip(picks, parlays=parlays, record=record, sport=sport,
