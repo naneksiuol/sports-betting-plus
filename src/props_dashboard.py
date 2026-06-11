@@ -607,6 +607,71 @@ def run_ai_summary(stats: dict) -> str:
     return quick_summary(stats)
 
 
+# ── Best Plays Tab ────────────────────────────────────────────────────────────
+def render_best_plays():
+    st.markdown("## 🌟 Best Plays Across All Sports")
+    st.caption("Top value bets ranked by confidence, updated every 5 minutes.")
+
+    _cache_key = "best_plays_cache"
+    _ts_key = "best_plays_ts"
+    import time as _t
+    _now = _t.time()
+
+    if _cache_key not in st.session_state or _now - st.session_state.get(_ts_key, 0) > 300:
+        with st.spinner("Scanning all sports for value..."):
+            try:
+                from cross_sport_summary import get_best_plays_df
+                df = get_best_plays_df(n=30)
+                st.session_state[_cache_key] = df
+                st.session_state[_ts_key] = _now
+            except Exception as e:
+                st.error(f"Could not load best plays: {e}")
+                return
+
+    df = st.session_state.get(_cache_key, pd.DataFrame())
+    if df is None or df.empty:
+        st.info("No value plays found across sports right now. Check back when games are scheduled.")
+        return
+
+    # KPI row
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Plays", len(df))
+    k2.metric("Sports Covered", df["sport"].nunique() if "sport" in df.columns else 0)
+    k3.metric("Avg Edge", f"{df['edge'].mean():.2%}" if "edge" in df.columns and len(df) > 0 else "—")
+    if len(df) > 0:
+        best = df.iloc[0]
+        k4.metric("Best Play", best.get("player","?"), delta=f"{best.get('sport','?')} · {best.get('edge',0):.2%}")
+
+    # Display table
+    from odds_client import SPORTS_CONFIG
+    def _mkt_label(row):
+        cfg = SPORTS_CONFIG.get(row.get("sport",""), {})
+        return cfg.get("market_labels", {}).get(row.get("market",""), row.get("market",""))
+
+    disp = df.copy()
+    disp["Prop"] = disp.apply(_mkt_label, axis=1)
+    disp["Odds"] = disp["over_odds"].apply(lambda x: f"+{int(x)}" if pd.notna(x) and x > 0 else (str(int(x)) if pd.notna(x) else "—"))
+    disp["Edge"] = disp["edge"].apply(lambda x: f"{x:.2%}" if pd.notna(x) else "—")
+    disp["Confidence"] = disp["confidence"].apply(lambda x: f"{int(x)}/100" if pd.notna(x) else "—") if "confidence" in disp.columns else "—"
+
+    cols = [c for c in ["sport", "player", "team", "Prop", "line", "Odds", "Edge", "Confidence"] if c in disp.columns or c in ["Odds","Edge","Confidence","Prop"]]
+    col_rename = {"sport": "Sport", "player": "Player", "team": "Game", "line": "Line"}
+    show = disp[[c for c in ["sport","player","team","Prop","line","Odds","Edge","Confidence"] if c in disp.columns or c in ["Odds","Edge","Confidence","Prop"]]]
+    # handle missing columns gracefully
+    display_cols = {}
+    for c in ["sport","player","team","Prop","line","Odds","Edge","Confidence"]:
+        if c in disp.columns:
+            display_cols[c] = col_rename.get(c, c)
+    show = disp[list(display_cols.keys())].rename(columns=display_cols)
+    st.dataframe(show, use_container_width=True, hide_index=True)
+
+    if st.button("🔄 Refresh", key="refresh_best_plays"):
+        for k in [_cache_key, _ts_key]:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.rerun()
+
+
 # ── Bet Tracker Tab ───────────────────────────────────────────────────────────
 def render_bet_tracker():
     from bet_tracker import load_bets, add_bet, update_result, delete_bet, get_stats
@@ -3722,13 +3787,18 @@ def main():
 
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
+    all_tab_labels = ["🌟 Best Plays"] + sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
     all_tabs = st.tabs(all_tab_labels)
+
+    # Best Plays tab (first)
+    with all_tabs[0]:
+        render_best_plays()
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"])], sports_list)):
+    _trailing = ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
+    for i, (tab, sport) in enumerate(zip(all_tabs[1:-len(_trailing)], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
