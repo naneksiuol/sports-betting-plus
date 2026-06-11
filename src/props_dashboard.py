@@ -2619,9 +2619,14 @@ def render_sport_tab(sport: str, use_live: bool):
             st.caption("Select legs from the Top 20 above to build a custom parlay.")
 
             _top_rows = report["top10"]
+            def _ou_label(r: dict) -> str:
+                mkt = r.get("market", "")
+                side = r.get("_side", "")
+                return "U" if (mkt.endswith("_under") or side == "Under") else "O"
+
             _leg_labels = [
-                f"{r.get('player','?')} — {market_labels.get(r.get('market', r.get('prop_label', r.get('prop','?'))), r.get('market', r.get('prop_label', r.get('prop','?'))))} O{r.get('line',0.5)} "
-                f"({'+'if int(r.get('over_odds',0))>0 else ''}{int(r.get('over_odds',0))}) "
+                f"{r.get('player','?')} — {market_labels.get(r.get('market', r.get('prop_label', r.get('prop','?'))), r.get('market', r.get('prop_label', r.get('prop','?'))))} {_ou_label(r)}{r.get('line',0.5)} "
+                f"({'+'if int(r.get('over_odds',0) or 0)>0 else ''}{int(r.get('over_odds',0) or 0)}) "
                 f"[Edge: {r.get('edge',0):+.1%}]"
                 for r in _top_rows
             ]
@@ -2777,7 +2782,7 @@ def render_sport_tab(sport: str, use_live: bool):
                 edge_val = leg.get("edge", 0)
                 edge_col = "#34d399" if edge_val > 0 else "#ff6060"
                 try:
-                    odds_i   = int(leg["over_odds"])
+                    odds_i   = int(leg.get("over_odds") or 0)
                     odds_fmt = f"+{odds_i}" if odds_i > 0 else str(odds_i)
                 except Exception:
                     odds_fmt = str(leg.get("over_odds", ""))
@@ -2855,7 +2860,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             player=leg["player"],
                             prop=f"{prop} {_ou(leg)}{leg.get('line','')} [{n}-leg parlay]",
                             line=leg.get("line", 0.5),
-                            odds=int(leg["over_odds"]),
+                            odds=int(leg.get("over_odds") or 0),
                             stake=round(stake / n, 2),
                             book="",
                             notes=f"Auto-logged from {n}-leg parlay | {amer_fmt} combined",
@@ -2869,7 +2874,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     f"  {j}. {leg['player']} — "
                     f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
                     f"{_ou(leg)}{leg.get('line','')} "
-                    f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
+                    f"({('+' if int(leg.get('over_odds') or 0)>0 else '')}{int(leg.get('over_odds') or 0)})"
                     for j, leg in enumerate(p["legs"], 1)
                 )
                 _share_parlay = (
@@ -2912,7 +2917,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         add_bet(
                             sport=sport, player=leg["player"],
                             prop=f"{prop} {_ou(leg)}{leg.get('line','')} [{n_legs_key}-leg parlay]",
-                            line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                            line=leg.get("line", 0.5), odds=int(leg.get("over_odds") or 0),
                             stake=round(stake / n_legs_key, 2), book="",
                             notes=f"Auto-logged {n_legs_key}-leg parlay | {pout['american_odds']} combined",
                             sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
@@ -2930,7 +2935,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         add_bet(
                             sport=sport, player=leg["player"],
                             prop=f"{prop} {_ou(leg)}{leg.get('line','')} [SGP]",
-                            line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                            line=leg.get("line", 0.5), odds=int(leg.get("over_odds") or 0),
                             stake=round(stake / n_legs_key, 2), book="",
                             notes=f"Auto-logged SGP {sgp['game']} | {pout['american_odds']} combined",
                             sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
@@ -2949,7 +2954,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             add_bet(
                                 sport=sport, player=leg["player"],
                                 prop=f"{prop} {_ou(leg)}{leg.get('line','')} [SGP combo #{ci}]",
-                                line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                                line=leg.get("line", 0.5), odds=int(leg.get("over_odds") or 0),
                                 stake=round(stake / n_legs_key, 2), book="",
                                 notes=f"Auto-logged best {n_legs_key}-leg SGP combo #{ci} | {sgp['game']} | {pout['american_odds']}",
                                 sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
@@ -2996,7 +3001,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             prop     = market_labels.get(leg.get("market", ""), leg.get("market", ""))
                             edge_val = leg.get("edge", 0)
                             edge_col = "#34d399" if edge_val > 0 else "#ff6060"
-                            odds_i   = int(leg["over_odds"])
+                            odds_i   = int(leg.get("over_odds") or 0)
                             odds_fmt = f"+{odds_i}" if odds_i > 0 else str(odds_i)
                             legs_html += f"""
 <div style="display:flex;justify-content:space-between;align-items:flex-start;
@@ -3060,7 +3065,7 @@ def render_sport_tab(sport: str, use_live: bool):
                                     add_bet(
                                         sport=sport, player=leg["player"],
                                         prop=f"{prop} {_ou(leg)}{leg.get('line','')} [Best SGP #{ci+1}]",
-                                        line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                                        line=leg.get("line", 0.5), odds=int(leg.get("over_odds") or 0),
                                         stake=round(stake / n, 2), book="",
                                         notes=f"Auto-logged best {n}-leg SGP #{ci+1} | {sgp['game']} | {amer_fmt}",
                                         sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
@@ -3071,7 +3076,7 @@ def render_sport_tab(sport: str, use_live: bool):
                                 f"  {j}. {leg['player']} — "
                                 f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
                                 f"{_ou(leg)}{leg.get('line','')} "
-                                f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
+                                f"({('+' if int(leg.get('over_odds') or 0)>0 else '')}{int(leg.get('over_odds') or 0)})"
                                 for j, leg in enumerate(sgp["legs"], 1)
                             )
                             _share_div = (
@@ -3115,7 +3120,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     prop     = market_labels.get(leg.get("market", ""), leg.get("market", ""))
                     edge_val = leg.get("edge", 0)
                     edge_col = "#34d399" if edge_val > 0 else "#ff6060"
-                    odds_i   = int(leg["over_odds"])
+                    odds_i   = int(leg.get("over_odds") or 0)
                     odds_fmt = f"+{odds_i}" if odds_i > 0 else str(odds_i)
                     nb_delta = leg.get("negbin_delta", 0)
                     nb_str   = f" <span style='color:#64748b;font-size:11px;'>[NB{nb_delta:+.1%}]</span>" if abs(nb_delta) >= 0.005 else ""
@@ -3201,7 +3206,7 @@ def render_sport_tab(sport: str, use_live: bool):
                             add_bet(
                                 sport=sport, player=leg["player"],
                                 prop=f"{prop} {_ou(leg)}{leg.get('line','')} [SGP]",
-                                line=leg.get("line", 0.5), odds=int(leg["over_odds"]),
+                                line=leg.get("line", 0.5), odds=int(leg.get("over_odds") or 0),
                                 stake=round(stake / n_legs, 2), book="",
                                 notes=f"Auto-logged from SGP {sgp['game']} | {amer_fmt} combined",
                                 sharp_odds=sl.get("consensus_odds"), fair_est=leg.get("fair_est"),
@@ -3212,7 +3217,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         f"  {j}. {leg['player']} — "
                         f"{market_labels.get(leg.get('market',''), leg.get('market',''))} "
                         f"{_ou(leg)}{leg.get('line','')} "
-                        f"({('+' if int(leg['over_odds'])>0 else '')}{int(leg['over_odds'])})"
+                        f"({('+' if int(leg.get('over_odds') or 0)>0 else '')}{int(leg.get('over_odds') or 0)})"
                         for j, leg in enumerate(sgp["legs"], 1)
                     )
                     _share_sgp = (

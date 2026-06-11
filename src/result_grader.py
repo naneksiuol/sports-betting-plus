@@ -767,14 +767,19 @@ def auto_grade_pending_bets(user_id: str = None) -> dict:
 
         # Find completed game matching this bet
         matched_game = None
+        # Build search corpus: player field, notes, team fields
+        _search_text = " ".join(filter(None, [
+            (bet.get("player") or "").lower(),
+            (bet.get("notes") or "").lower(),
+            (bet.get("team") or "").lower(),
+            (bet.get("matchup") or "").lower(),
+        ]))
         for game in scores:
             if not game.get("completed"):
                 continue
             home = game.get("home_team", "").lower()
             away = game.get("away_team", "").lower()
-            player = (bet.get("player") or "").lower()
-            # Match by team name appearing in player/notes field
-            if home in player or away in player or home in market.lower() or away in market.lower():
+            if home in _search_text or away in _search_text or home in market.lower() or away in market.lower():
                 matched_game = game
                 break
 
@@ -821,15 +826,6 @@ def auto_grade_pending_bets(user_id: str = None) -> dict:
                     profit = 0.0
 
                 update_result(bet["id"], result, user_id=user_id)
-                if profit is not None:
-                    from bet_tracker import load_bets, save_bets
-                    all_bets = load_bets(user_id=user_id)
-                    for b in all_bets:
-                        if b["id"] == bet["id"]:
-                            b["profit"] = profit
-                            break
-                    save_bets(all_bets, user_id=user_id)
-
                 graded += 1
                 details.append(f"Graded {bet.get('player','?')} {market}: {result}")
             else:
