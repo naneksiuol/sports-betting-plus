@@ -2234,6 +2234,7 @@ def render_sport_tab(sport: str, use_live: bool):
         # Injury status
         has_nb   = "NB Δ" in display_df.columns
         has_conf = "Conf" in display_df.columns
+        has_band = "Win Prob" in display_df.columns
 
         _shop_cols = (["FD", "DK", "Bet At", "Spread"] if _has_line_shop else [])
 
@@ -2242,6 +2243,7 @@ def render_sport_tab(sport: str, use_live: bool):
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
+                         *(["Win Prob"] if has_band else []),
                          "Kelly", "Signal",
                          *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
@@ -2251,6 +2253,7 @@ def render_sport_tab(sport: str, use_live: bool):
             col_names = ["Player", "Team/Game", "Prop", "Line", "Odds",
                          "Book Implied", "Fair Est.", "Edge",
                          *(["Conf"] if has_conf else []),
+                         *(["Win Prob"] if has_band else []),
                          "Kelly", "Signal",
                          *(["NB Δ"] if has_nb else []),
                          *_shop_cols,
