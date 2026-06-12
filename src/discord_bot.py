@@ -113,7 +113,7 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
         )
 
     embeds.append({
-        "title": f"🎯 Sports Betting Plus — {sport} Daily Slip",
+        "title": f"🎯 PropLens — {sport} Daily Slip",
         "description": f"📅 {today}\n\n{record_str}**🏆 Top 20 Best Edge Candidates (Top 5 per Prop)**\n\n" + "\n".join(picks_lines),
         "color": 0x00FF88,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -147,7 +147,7 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
     footer_parts = [f"Filtered to edge ≥ {threshold_pct}% | {len(_top20)} plays"]
     if clv_avg is not None:
         footer_parts.append(f"System CLV avg: {clv_avg:+.1%}")
-    footer_parts.append("Sports Betting Plus • 21+ • Not betting advice • Gambling problem? 1-800-GAMBLER")
+    footer_parts.append("PropLens • 21+ • Not betting advice • Gambling problem? 1-800-GAMBLER")
     embeds[-1]["footer"] = {"text" : " • ".join(footer_parts)}
     return send(embeds=embeds)
 
@@ -163,7 +163,7 @@ def send_steam_alert(player: str, market: str, prev_odds: int,
             f"⚡ Multiple books moving — sharp action likely"
         ),
         "color": 0xFF4500,
-        "footer": {"text": f"Sports Betting Plus • {datetime.now().strftime('%I:%M %p CT')}"},
+        "footer": {"text": f"PropLens • {datetime.now().strftime('%I:%M %p CT')}"},
     }
     return send(embeds=[embed])
 
@@ -181,7 +181,7 @@ def send_grade_report(graded: int, wins: int, losses: int,
             f"**All-Time ROI:** {roi:+.1f}%"
         ),
         "color": color,
-        "footer": {"text": f"Sports Betting Plus • {datetime.now().strftime('%B %d, %Y')}"},
+        "footer": {"text": f"PropLens • {datetime.now().strftime('%B %d, %Y')}"},
     }
     return send(embeds=[embed])
 
@@ -263,7 +263,7 @@ def send_retrain_summary(summary: dict) -> bool:
                 "inline": True,
             },
         ],
-        "footer": {"text": "Sports Betting Plus • Auto-Retrain Pipeline"},
+        "footer": {"text": "PropLens • Auto-Retrain Pipeline"},
     }
     return send(embeds=[embed])
 
@@ -285,6 +285,6 @@ def send_pick_alert(player: str, prop: str, line: float, over_odds: int,
             f"🏦 Kelly Stake: **${kelly_stake:.2f}**"
         ),
         "color": 0x00FF88 if edge >= 0.03 else 0xFFD700,
-        "footer": {"text": f"Sports Betting Plus • {datetime.now().strftime('%I:%M %p CT')}"},
+        "footer": {"text": f"PropLens • {datetime.now().strftime('%I:%M %p CT')}"},
     }
     return send(embeds=[embed])

@@ -67,11 +67,17 @@ def _share_btn(text: str, uid: str, width: str = "auto") -> None:
         st.code(text, language=None)
 
 st.set_page_config(
-    page_title="Sports Betting Plus Bot",
+    page_title="PropLens — See the edge before you take it",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ── Public pages (no login required) ─────────────────────────────────────────
+if st.query_params.get("page") == "transparency":
+    from transparency import render_transparency
+    render_transparency()
+    st.stop()
 
 # ── Auth gate ─────────────────────────────────────────────────────────────────
 _SUPABASE_CONFIGURED = bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_ANON_KEY"))
@@ -880,7 +886,7 @@ def render_bet_tracker():
                         f"📊 {bet['prop']} @ {odds_fmt}\n"
                         f"💰 Stake: ${bet['stake']:.2f}  |  {badge}\n"
                         f"📅 {bet['date']}\n"
-                        f"— via Sports Betting Plus"
+                        f"— via PropLens"
                     )
                     _share_btn(share_text, f"bet_{bet['id']}")
 
@@ -2864,7 +2870,7 @@ def render_sport_tab(sport: str, use_live: bool):
                     f"{_parlay_lines}\n"
                     f"📈 Combined: {amer_fmt}  |  Win prob: {win_prob:.1%}  |  EV: {ev_sign}{ev_pct:.1f}%\n"
                     f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
-                    f"— via Sports Betting Plus"
+                    f"— via PropLens"
                 )
                 _share_btn(_share_parlay, f"parlay_{sport}_{n}", width="100%")
 
@@ -3066,7 +3072,7 @@ def render_sport_tab(sport: str, use_live: bool):
                                 f"{_div_lines}\n"
                                 f"📈 Combined: {amer_fmt}  |  EV: {ev_sign}{ev_pct:.1f}%\n"
                                 f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
-                                f"— via Sports Betting Plus"
+                                f"— via PropLens"
                             )
                             _share_btn(_share_div, f"div_{sport}_{n}_{ci}", width="100%")
 
@@ -3207,7 +3213,7 @@ def render_sport_tab(sport: str, use_live: bool):
                         f"{_sgp_lines}\n"
                         f"📈 Combined: {amer_fmt}  |  EV: {ev_sign}{ev_pct:.1f}%\n"
                         f"💰 ${pout['stake']:.0f} → ${pout['payout']:.2f}\n"
-                        f"— via Sports Betting Plus"
+                        f"— via PropLens"
                     )
                     _share_btn(_share_sgp, f"sgp_{sport}_{i}", width="100%")
         else:
@@ -3614,7 +3620,7 @@ def main():
   <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
               border-radius:14px;padding:12px 22px;margin-bottom:16px;">
     <span style="color:#fff;font-size:22px;font-weight:900;letter-spacing:-0.5px;">
-      Sports Betting+
+      PropLens
     </span>
   </div>
   <h1 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:800;
@@ -3641,7 +3647,7 @@ def main():
             st.markdown("""
 <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border-radius:12px;
             padding:10px 14px;margin-bottom:4px;text-align:center;">
-  <span style="color:#fff;font-size:16px;font-weight:900;letter-spacing:-0.3px;">Sports Betting+</span>
+  <span style="color:#fff;font-size:16px;font-weight:900;letter-spacing:-0.3px;">PropLens</span>
 </div>
 """, unsafe_allow_html=True)
         st.divider()
@@ -3977,7 +3983,7 @@ RAPIDAPI_KEY=your_key_here
 <div style="text-align:center;padding:28px 0 8px;border-top:1px solid #2a2a3a;margin-top:24px;">
   <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
               border-radius:10px;padding:8px 16px;margin-bottom:12px;">
-    <span style="color:#fff;font-size:14px;font-weight:800;letter-spacing:-0.3px;">Sports Betting+</span>
+    <span style="color:#fff;font-size:14px;font-weight:800;letter-spacing:-0.3px;">PropLens</span>
   </div>
   <p style="color:#333;font-size:11px;margin:4px 0 2px;">
     Live odds via The Odds API &nbsp;·&nbsp; AI analysis by Groq &nbsp;·&nbsp; Stats via ESPN public API

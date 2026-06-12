@@ -149,7 +149,7 @@ def fmt_daily_slip(picks: list[dict], parlays: dict = None,
                    record: dict = None) -> str:
     today = datetime.now().strftime("%B %d, %Y")
     lines = [
-        f"🎯 <b>Sports Betting Plus</b>",
+        f"🎯 <b>PropLens</b>",
         f"📅 Daily Slip — {today}",
         "",
     ]
@@ -196,7 +196,7 @@ def fmt_daily_slip(picks: list[dict], parlays: dict = None,
         "",
         "⚠️ 21+ only. Not betting advice. Past performance ≠ future results.",
         "Gambling problem? Call or text 1-800-GAMBLER.",
-        "📱 Sports Betting Plus",
+        "📱 PropLens",
     ]
     return "\n".join(lines)
 

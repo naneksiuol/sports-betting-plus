@@ -257,7 +257,7 @@ def generate_all_sports_slip(sports_data: dict = None) -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sports Betting Plus — {date_str}</title>
+  <title>PropLens — {date_str}</title>
   <style>{BASE_CSS}</style>
 </head>
 <body style="background:#0f0f13;margin:0;padding:0;">
@@ -268,7 +268,7 @@ def generate_all_sports_slip(sports_data: dict = None) -> str:
     <div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);
                 border-radius:16px;padding:12px 20px;margin-bottom:20px;">
       <span style="color:#fff;font-size:22px;font-weight:900;letter-spacing:-0.5px;">
-        Sports Betting+
+        PropLens
       </span>
     </div>
     <h1 style="margin:0;color:#e8e8f0;font-size:28px;font-weight:800;letter-spacing:-1px;">
@@ -315,7 +315,7 @@ def generate_all_sports_slip(sports_data: dict = None) -> str:
   <!-- Footer -->
   <div style="text-align:center;padding:32px 0 0;border-top:1px solid #1a1a24;margin-top:32px;">
     <p style="color:#333;font-size:12px;margin:0 0 6px;">
-      Sports Betting Plus &nbsp;·&nbsp; {date_str}
+      PropLens &nbsp;·&nbsp; {date_str}
     </p>
     <p style="color:#262630;font-size:11px;margin:0;">
       Always bet responsibly. Past performance does not guarantee future results.
@@ -401,7 +401,7 @@ def send_email(
 
     from subscribers import load_subscribers
     all_recipients = list({TO_EMAIL} | set(load_subscribers()) | set(extra_recipients or []))
-    subject = f"🎯 Sports Betting Plus — Daily Slip {datetime.now().strftime('%B %d, %Y')}"
+    subject = f"🎯 PropLens — Daily Slip {datetime.now().strftime('%B %d, %Y')}"
 
     results = {"sent": [], "failed": []}
     try:

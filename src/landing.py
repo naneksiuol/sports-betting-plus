@@ -22,7 +22,7 @@ def show_landing(on_login: callable, on_signup: callable):
 
     st.markdown(f"""
     <div class="hero">
-        <div class="hero-badge">⚡ LIVE ODDS · REAL EDGE · AI POWERED</div>
+        <div class="hero-badge">🔍 PROPLENS · PROPS INTELLIGENCE · AI POWERED</div>
         <h1 class="hero-title">See the Edge.<br><span class="hero-gradient">Before You Take It.</span></h1>
         <p class="hero-sub">
             Model-driven props analysis on FanDuel &amp; DraftKings lines. Calibrated
@@ -261,11 +261,12 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown("""
     <div class="footer">
         <p>Cancel anytime &nbsp;·&nbsp; No contracts &nbsp;·&nbsp; Billed monthly via Stripe</p>
-        <p class="footer-copy">© 2026 Sports Betting Plus. All rights reserved.</p>
+        <p class="footer-copy">© 2026 PropLens. All rights reserved.</p>
         <p class="footer-copy" style="font-size:0.72rem;margin-top:0.25rem;">For informational and entertainment purposes only.
         Not betting advice — past performance does not guarantee future results. 21+ only.
         Sports betting is not legal in all states; void where prohibited.</p>
         <p class="footer-copy" style="font-size:0.72rem;margin-top:0.25rem;">Gambling problem? Call or text <strong>1-800-GAMBLER</strong>.
+        &nbsp;·&nbsp; <a href="?page=transparency" target="_self" style="color:#666;">Transparency</a>
         &nbsp;·&nbsp; <a href="#" style="color:#666;">Terms of Service</a>
         &nbsp;·&nbsp; <a href="#" style="color:#666;">Privacy Policy</a></p>
     </div>
