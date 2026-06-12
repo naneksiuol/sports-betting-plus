@@ -194,7 +194,8 @@ def fmt_daily_slip(picks: list[dict], parlays: dict = None,
 
     lines += [
         "",
-        "⚠️ Bet responsibly. Past performance ≠ future results.",
+        "⚠️ 21+ only. Not betting advice. Past performance ≠ future results.",
+        "Gambling problem? Call or text 1-800-GAMBLER.",
         "📱 Sports Betting Plus",
     ]
     return "\n".join(lines)

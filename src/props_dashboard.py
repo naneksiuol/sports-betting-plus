@@ -819,7 +819,10 @@ def render_bet_tracker():
                 _w = csv.DictWriter(_buf, fieldnames=_fields, extrasaction="ignore")
                 _w.writeheader()
                 _w.writerows(filtered_bets)
-                st.download_button("📥 Export CSV", _buf.getvalue(), "bets.csv", "text/csv", use_container_width=False)
+                if _tiers and not _tiers.can(_current_tier, "export"):
+                    st.caption("🔒 CSV export is a Syndicate-plan feature.")
+                else:
+                    st.download_button("📥 Export CSV", _buf.getvalue(), "bets.csv", "text/csv", use_container_width=False)
 
             for bet in reversed(filtered_bets):
                 result = bet["result"]
@@ -1938,9 +1941,43 @@ def render_sport_tab(sport: str, use_live: bool):
             clv_avg=_clv_avg_global,
         )
 
+    # Calibrated win probability + uncertainty band (Platt/isotonic from
+    # graded bet history; falls back to fair_est when untrained)
+    def _row_prob_band(row) -> tuple:
+        try:
+            from calibration import calibrate_score
+            p = calibrate_score(
+                raw_implied=float(row.get("book_implied", 0.5)),
+                edge=float(row.get("edge", 0)),
+                fair_est=float(row.get("fair_est", 0.5)),
+                market=str(row.get("market", "")),
+                sport=sport,
+                line=float(row.get("line", 0.5)),
+                odds=float(row.get("over_odds", -110)),
+            )
+        except Exception:
+            p = float(row.get("fair_est", 0.5))
+        n = _cal_n if _cal_n else 0
+        if n >= 30:
+            import math
+            half = max(0.02, min(0.10, 1.96 * math.sqrt(p * (1 - p) / n)))
+        else:
+            half = 0.06  # untrained/thin calibrator — wide band
+        return round(max(p - half, 0.01), 4), round(p, 4), round(min(p + half, 0.99), 4)
+
+    try:
+        from calibration import calibration_status
+        _cal_n = int(calibration_status().get("n_graded") or 0)
+    except Exception:
+        _cal_n = 0
+
     if len(filtered) > 0:
         filtered = filtered.copy()
         filtered["confidence"] = filtered.apply(_row_confidence, axis=1)
+        _bands = filtered.apply(_row_prob_band, axis=1)
+        filtered["win_prob_lo"] = _bands.apply(lambda b: b[0])
+        filtered["win_prob"]    = _bands.apply(lambda b: b[1])
+        filtered["win_prob_hi"] = _bands.apply(lambda b: b[2])
         filtered = filtered.sort_values(["confidence", "edge"], ascending=False)
 
     # ── KPIs ──
@@ -1998,7 +2035,7 @@ def render_sport_tab(sport: str, use_live: bool):
   </div>
   <div style="margin-top:0.5rem;font-size:0.8rem;color:#aaa;">
     Edge <b style="color:{best_color};">+{best_edge:.2%}</b> ·
-    Fair <b style="color:#fff;">{best_fair:.1%}</b> ·
+    Win prob <b style="color:#fff;">{float(best.get('win_prob_lo', best_fair)):.0%}&ndash;{float(best.get('win_prob_hi', best_fair)):.0%}</b> ·
     Game: <b style="color:#ccc;">{best.get('team','')}</b>{confirmed_badge}
   </div>
 </div>
@@ -2106,6 +2143,11 @@ def render_sport_tab(sport: str, use_live: bool):
         if "confidence" in filtered.columns:
             display_df["Conf"] = filtered["confidence"].apply(
                 lambda s: f"{int(s)}/100")
+
+        # Calibrated win-probability band
+        if "win_prob_lo" in filtered.columns:
+            display_df["Win Prob"] = filtered.apply(
+                lambda r: f"{r['win_prob_lo']:.0%}–{r['win_prob_hi']:.0%}", axis=1)
 
         # Dynamic Kelly stake — scaled by unit size from settings
         def _kelly_display(r):
@@ -2353,11 +2395,14 @@ def render_sport_tab(sport: str, use_live: bool):
 
         col_dl, col_email, col_tg = st.columns(3)
         with col_dl:
-            csv = filtered.to_csv(index=False).encode("utf-8")
-            st.download_button("📥 Download CSV", data=csv,
-                               file_name=f"{sport.lower()}_value_bets.csv",
-                               mime="text/csv", use_container_width=True,
-                               key=f"dl_{sport}")
+            if _tiers and not _tiers.can(_current_tier, "export"):
+                st.caption("🔒 CSV export is a Syndicate-plan feature.")
+            else:
+                csv = filtered.to_csv(index=False).encode("utf-8")
+                st.download_button("📥 Download CSV", data=csv,
+                                   file_name=f"{sport.lower()}_value_bets.csv",
+                                   mime="text/csv", use_container_width=True,
+                                   key=f"dl_{sport}")
         with col_email:
             if st.button("📧 Email All Sports Slip", use_container_width=True, key=f"email_{sport}"):
                 try:
@@ -2479,7 +2524,7 @@ def render_sport_tab(sport: str, use_live: bool):
             <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
                         border-radius:12px;padding:1.5rem;text-align:center'>
                 <h3>🔒 Standard Feature</h3>
-                <p style='color:#aaa'>Upgrade to <strong>Standard</strong> ($9/mo) to unlock the Parlay Builder.</p>
+                <p style='color:#aaa'>Upgrade to <strong>Edge</strong> ($19/mo) to unlock the Parlay Builder.</p>
             </div>
             """, unsafe_allow_html=True)
             if _SUPABASE_CONFIGURED:
@@ -3847,7 +3892,7 @@ def main():
                 <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
                             border-radius:12px;padding:1.5rem;text-align:center;margin:1rem 0'>
                     <h3>🔒 Standard Feature</h3>
-                    <p style='color:#aaa'>Upgrade to <strong>Standard</strong> ($9/mo)
+                    <p style='color:#aaa'>Upgrade to <strong>Edge</strong> ($19/mo)
                     to unlock all 6 sports.</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3893,7 +3938,19 @@ RAPIDAPI_KEY=your_key_here
 
     # CLV & ROI tab (third from last)
     with all_tabs[-3]:
-        render_clv_tab()
+        if _tiers and not _tiers.can(_current_tier, "clv"):
+            _req = _tiers.TIERS["premium"]
+            st.markdown(f"""
+            <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
+                        border-radius:12px;padding:1.5rem;text-align:center;margin:1rem 0'>
+                <h3>🔒 {_req['label']} Feature</h3>
+                <p style='color:#aaa'>The CLV &amp; ROI dashboard is available on <strong>{_req['label']}</strong> (${_req['price_monthly']}/mo).</p>
+            </div>
+            """, unsafe_allow_html=True)
+            import auth_ui as _aui_clv
+            _aui_clv.show_upgrade_modal("premium", key="clv_tab")
+        else:
+            render_clv_tab()
 
     # Tracker tab (second to last)
     with all_tabs[-2]:
@@ -3902,7 +3959,7 @@ RAPIDAPI_KEY=your_key_here
             <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
                         border-radius:12px;padding:1.5rem;text-align:center;margin:1rem 0'>
                 <h3>🔒 Premium Feature</h3>
-                <p style='color:#aaa'>The Bet Tracker is available on <strong>Premium</strong> ($29/mo).</p>
+                <p style='color:#aaa'>The Bet Tracker is available on <strong>Sharp</strong> ($49/mo).</p>
             </div>
             """, unsafe_allow_html=True)
             if _SUPABASE_CONFIGURED:

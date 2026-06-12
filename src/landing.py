@@ -23,10 +23,10 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown(f"""
     <div class="hero">
         <div class="hero-badge">⚡ LIVE ODDS · REAL EDGE · AI POWERED</div>
-        <h1 class="hero-title">Beat the Book.<br><span class="hero-gradient">Every Day.</span></h1>
+        <h1 class="hero-title">See the Edge.<br><span class="hero-gradient">Before You Take It.</span></h1>
         <p class="hero-sub">
-            Real-time value bets on FanDuel &amp; DraftKings. AI-powered parlay builder,
-            sharp line analysis, and bet tracker — MLB, NBA, NHL, NFL and more.
+            Model-driven props analysis on FanDuel &amp; DraftKings lines. Calibrated
+            probabilities, parlay builder, and bet tracking — MLB, NBA, NHL, NFL and more.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -89,8 +89,8 @@ def show_landing(on_login: callable, on_signup: callable):
         <div class="step-card">
             <div class="step-num">3</div>
             <div class="step-icon">💰</div>
-            <h3>You Bet With Edge</h3>
-            <p>Place bets with confidence, track your results, and watch your ROI compound.</p>
+            <h3>You Decide, Informed</h3>
+            <p>See the model's probability next to the book's price, track your results, and understand your performance.</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -98,7 +98,7 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown("<div style='margin-top:3.5rem'></div>", unsafe_allow_html=True)
 
     # ── Features grid ─────────────────────────────────────────────────────────
-    st.markdown('<h2 class="section-title">Everything You Need to Win</h2>', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-title">Everything You Need to Analyze the Props Market</h2>', unsafe_allow_html=True)
     st.markdown("""
     <div class="features-grid">
         <div class="feature-card">
@@ -157,9 +157,9 @@ def show_landing(on_login: callable, on_signup: callable):
         </div>
         <div class="price-card featured">
             <div class="plan-badge">MOST POPULAR</div>
-            <div class="plan-name">Standard</div>
-            <div class="plan-price">$9<span>/mo</span></div>
-            <p class="plan-desc">Full access. Real edge. Every sport.</p>
+            <div class="plan-name">Edge</div>
+            <div class="plan-price">$19<span>/mo</span></div>
+            <p class="plan-desc">Full access. Every sport.</p>
             <ul class="plan-features">
                 <li><span class="chk">✓</span> All 6 sports</li>
                 <li><span class="chk">✓</span> Unlimited props</li>
@@ -171,12 +171,12 @@ def show_landing(on_login: callable, on_signup: callable):
             </ul>
         </div>
         <div class="price-card">
-            <div class="plan-name">Premium</div>
-            <div class="plan-price">$29<span>/mo</span></div>
+            <div class="plan-name">Sharp</div>
+            <div class="plan-price">$49<span>/mo</span></div>
             <p class="plan-desc">For serious bettors who track every dollar.</p>
             <ul class="plan-features">
-                <li><span class="chk">✓</span> Everything in Standard</li>
-                <li><span class="chk">✓</span> Bet tracker + grader</li>
+                <li><span class="chk">✓</span> Everything in Edge</li>
+                <li><span class="chk">✓</span> Bet tracker + CLV dashboard</li>
                 <li><span class="chk">✓</span> AI analysis (fast inference)</li>
                 <li><span class="chk">✓</span> Discord alerts</li>
                 <li><span class="chk">✓</span> Near real-time data</li>
@@ -195,12 +195,12 @@ def show_landing(on_login: callable, on_signup: callable):
             st.session_state["auth_mode"] = "signup"
             st.rerun()
     with pc2:
-        if st.button("Get Standard →", key="cta_standard", use_container_width=True, type="primary"):
+        if st.button("Get Edge →", key="cta_standard", use_container_width=True, type="primary"):
             st.session_state["auth_mode"] = "signup"
             st.session_state["pending_tier"] = "standard"
             st.rerun()
     with pc3:
-        if st.button("Go Premium →", key="cta_premium", use_container_width=True):
+        if st.button("Go Sharp →", key="cta_premium", use_container_width=True):
             st.session_state["auth_mode"] = "signup"
             st.session_state["pending_tier"] = "premium"
             st.rerun()
@@ -212,7 +212,7 @@ def show_landing(on_login: callable, on_signup: callable):
     st.markdown("""
     <div class="auth-cta-section">
         <h2 class="auth-cta-title">Ready to get an edge?</h2>
-        <p class="auth-cta-sub">Join sharp bettors using real data to beat the book.</p>
+        <p class="auth-cta-sub">Join bettors who use data to make more informed decisions.</p>
         <div class="oauth-buttons">
             <div class="oauth-btn google-btn">
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -262,7 +262,10 @@ def show_landing(on_login: callable, on_signup: callable):
     <div class="footer">
         <p>Cancel anytime &nbsp;·&nbsp; No contracts &nbsp;·&nbsp; Billed monthly via Stripe</p>
         <p class="footer-copy">© 2026 Sports Betting Plus. All rights reserved.</p>
-        <p class="footer-copy" style="font-size:0.72rem;margin-top:0.25rem;">For entertainment purposes only. Please bet responsibly. 18+ only.
+        <p class="footer-copy" style="font-size:0.72rem;margin-top:0.25rem;">For informational and entertainment purposes only.
+        Not betting advice — past performance does not guarantee future results. 21+ only.
+        Sports betting is not legal in all states; void where prohibited.</p>
+        <p class="footer-copy" style="font-size:0.72rem;margin-top:0.25rem;">Gambling problem? Call or text <strong>1-800-GAMBLER</strong>.
         &nbsp;·&nbsp; <a href="#" style="color:#666;">Terms of Service</a>
         &nbsp;·&nbsp; <a href="#" style="color:#666;">Privacy Policy</a></p>
     </div>

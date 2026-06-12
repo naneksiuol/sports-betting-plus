@@ -9,11 +9,18 @@ import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+# Load .env so EMAIL_APP_PASSWORD can live outside the repo
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    pass
+
 # ================== CENTRAL CONFIG ==================
 MIN_EDGE_THRESHOLD = -0.04
-EMAIL = "naneksiuol@gmail.com"
-APP_PASSWORD = "peri zrba vdnl hyht"
-TO_EMAIL = "naneksiuol@gmail.com"
+EMAIL = os.environ.get("EMAIL_ADDRESS", "naneksiuol@gmail.com")
+APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD", "")
+TO_EMAIL = os.environ.get("EMAIL_TO", EMAIL)
 SPORTS = ["MLB", "NBA", "WNBA", "NHL"]
 # ===================================================
 
@@ -312,6 +319,10 @@ def generate_all_sports_slip(sports_data: dict = None) -> str:
     </p>
     <p style="color:#262630;font-size:11px;margin:0;">
       Always bet responsibly. Past performance does not guarantee future results.
+      Not betting advice. 21+ only. Sports betting is not legal in all states; void where prohibited.
+    </p>
+    <p style="color:#262630;font-size:11px;margin:6px 0 0;">
+      Gambling problem? Call or text 1-800-GAMBLER.
     </p>
   </div>
 

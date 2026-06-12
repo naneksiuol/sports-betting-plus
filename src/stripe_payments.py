@@ -12,8 +12,9 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
 # Fill these in after creating products in Stripe dashboard
 PRICE_IDS = {
-    "standard": os.environ.get("STRIPE_STANDARD_PRICE_ID", ""),
-    "premium":  os.environ.get("STRIPE_PREMIUM_PRICE_ID", ""),
+    "standard":  os.environ.get("STRIPE_STANDARD_PRICE_ID", ""),
+    "premium":   os.environ.get("STRIPE_PREMIUM_PRICE_ID", ""),
+    "syndicate": os.environ.get("STRIPE_SYNDICATE_PRICE_ID", ""),
 }
 
 APP_URL = os.environ.get("APP_URL", "http://localhost:8501")

@@ -120,9 +120,12 @@ def _show_signup():
                                  placeholder="Min 8 characters",
                                  help="At least 8 characters")
         confirm = st.text_input("Confirm Password", type="password", placeholder="••••••••")
+        age_ok = st.checkbox("I am 21 years of age or older", key="signup_age_attest")
         submitted = st.form_submit_button("Create Free Account", use_container_width=True, type="primary")
         if submitted:
-            if not all([name, email, password, confirm]):
+            if not age_ok:
+                st.error("You must be 21 or older to use this service.")
+            elif not all([name, email, password, confirm]):
                 st.error("Please fill in all fields.")
             elif len(password) < 8:
                 st.error("Password must be at least 8 characters.")
@@ -381,12 +384,12 @@ def show_user_menu():
         profile_tier = profile.get("tier", tier)
         if profile_tier == "past_due":
             st.warning("⚠️ Payment failed — update billing to keep access")
-        elif profile_tier in ("standard", "premium"):
+        elif profile_tier in ("standard", "premium", "syndicate"):
             st.markdown("✅ **Active**")
 
         # ── Manage Billing link ──
         _stripe_key = __import__("os").environ.get("STRIPE_SECRET_KEY", "")
-        if _stripe_key and profile_tier in ("standard", "premium", "past_due"):
+        if _stripe_key and profile_tier in ("standard", "premium", "syndicate", "past_due"):
             try:
                 import stripe as _stripe
                 _stripe.api_key = _stripe_key
@@ -403,7 +406,7 @@ def show_user_menu():
                     "[🔗 Manage Billing](mailto:support@sportsbettingplus.com)",
                     unsafe_allow_html=False,
                 )
-        elif profile_tier in ("standard", "premium", "past_due"):
+        elif profile_tier in ("standard", "premium", "syndicate", "past_due"):
             st.markdown(
                 "[🔗 Manage Billing](mailto:support@sportsbettingplus.com)",
                 unsafe_allow_html=False,
@@ -413,8 +416,13 @@ def show_user_menu():
             if st.button("🛠️ Admin Panel", use_container_width=True, key="sidebar_admin"):
                 st.session_state["show_admin"] = not st.session_state.get("show_admin", False)
                 st.rerun()
-        if tier != "premium":
-            next_tier = "standard" if tier == "free" else "premium"
+        _ladder = {"free": "standard", "standard": "premium", "premium": "syndicate"}
+        next_tier = _ladder.get(tier)
+        import stripe_payments as _sp
+        # Hide the Syndicate upsell until its Stripe price is configured
+        if next_tier == "syndicate" and not _sp.PRICE_IDS.get("syndicate"):
+            next_tier = None
+        if next_tier:
             cfg = t.TIERS[next_tier]
             if st.button(f"⬆️ Upgrade to {cfg['label']}", use_container_width=True, key="sidebar_upgrade"):
                 import stripe_payments

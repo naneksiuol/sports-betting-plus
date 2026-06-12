@@ -147,7 +147,7 @@ def send_daily_slip(picks: list[dict], parlays: dict = None,
     footer_parts = [f"Filtered to edge ≥ {threshold_pct}% | {len(_top20)} plays"]
     if clv_avg is not None:
         footer_parts.append(f"System CLV avg: {clv_avg:+.1%}")
-    footer_parts.append("Sports Betting Plus • Bet responsibly")
+    footer_parts.append("Sports Betting Plus • 21+ • Not betting advice • Gambling problem? 1-800-GAMBLER")
     embeds[-1]["footer"] = {"text" : " • ".join(footer_parts)}
     return send(embeds=embeds)
 

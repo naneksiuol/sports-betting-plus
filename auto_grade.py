@@ -23,7 +23,7 @@ except ImportError:
 def send_grade_report(summary: dict, stats: dict):
     """Email the grading summary to the owner."""
     EMAIL = os.environ.get("EMAIL_FROM", "naneksiuol@gmail.com")
-    APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD", "peri zrba vdnl hyht")
+    APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD", "")
     TO_EMAIL = os.environ.get("EMAIL_TO", "naneksiuol@gmail.com")
 
     wins = stats.get("wins", 0)
