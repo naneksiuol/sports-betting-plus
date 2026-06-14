@@ -2311,6 +2311,71 @@ def render_sport_tab(sport: str, use_live: bool):
         except Exception:
             pass
 
+        # ── Watch Players ─────────────────────────────────────────────────────
+        with st.expander("⭐ Watch Players — get injury alerts", expanded=False):
+            _wl_uid = (st.session_state.get("user") or {}).get("id")
+            _wl_tok = st.session_state.get("access_token")
+            if not _wl_uid:
+                st.info("Log in to save players to your watchlist and receive injury alerts.")
+            else:
+                try:
+                    from watchlist import add_watch, remove_watch, get_watchlist
+                    _wl_rows = get_watchlist(_wl_uid, _wl_tok)
+                    _watched_keys = {
+                        (r["player"], r["sport"], r["market"]) for r in _wl_rows
+                    }
+
+                    # Pick players from today's board
+                    _player_opts = sorted(filtered["player"].unique().tolist())
+                    _already_watched = [
+                        p for p in _player_opts
+                        if any(p == k[0] and sport == k[1] for k in _watched_keys)
+                    ]
+                    _sel = st.multiselect(
+                        "Select players from today's board to watch:",
+                        options=_player_opts,
+                        default=_already_watched,
+                        key=f"watch_sel_{sport}",
+                        help="You'll get a Discord/Telegram alert if a watched player is listed Out or Doubtful.",
+                    )
+                    if st.button("💾 Save Watchlist", key=f"watch_save_{sport}"):
+                        _newly_added, _removed = 0, 0
+                        # Add new watches
+                        for _p in _sel:
+                            if not any(_p == k[0] and sport == k[1] for k in _watched_keys):
+                                _row_match = filtered[filtered["player"] == _p].iloc[0] if len(filtered[filtered["player"] == _p]) else None
+                                _mkt = str(_row_match["market"]) if _row_match is not None else ""
+                                _ln  = float(_row_match["line"])  if _row_match is not None else None
+                                if add_watch(_wl_uid, _p, sport, _mkt, _ln, _wl_tok):
+                                    _newly_added += 1
+                        # Remove deselected
+                        for r in _wl_rows:
+                            if r["sport"] == sport and r["player"] not in _sel:
+                                remove_watch(_wl_uid, r["player"], sport, r["market"], _wl_tok)
+                                _removed += 1
+                        if _newly_added or _removed:
+                            st.success(f"Watchlist updated (+{_newly_added} / -{_removed}). Injury alerts will fire via Discord/Telegram.")
+                        else:
+                            st.info("No changes.")
+
+                    # Show current watchlist for this sport
+                    _sport_wl = [r for r in _wl_rows if r.get("sport") == sport]
+                    if _sport_wl:
+                        st.caption(f"Currently watching {len(_sport_wl)} player(s) in {sport}:")
+                        for r in _sport_wl:
+                            _inj = ""
+                            try:
+                                if "injury_status" in filtered.columns:
+                                    _mrow = filtered[filtered["player"] == r["player"]]
+                                    if not _mrow.empty:
+                                        _inj = _mrow.iloc[0].get("injury_status", "") or ""
+                            except Exception:
+                                pass
+                            _inj_badge = f" 🚑 **{_inj}**" if _inj in ("Out", "Doubtful", "Questionable") else ""
+                            st.markdown(f"⭐ {r['player']} · {r['market']} O{r['line']}{_inj_badge}")
+                except Exception as _wl_err:
+                    st.caption(f"Watchlist unavailable: {_wl_err}")
+
         col_dl, col_email, col_tg = st.columns(3)
         with col_dl:
             csv = filtered.to_csv(index=False).encode("utf-8")
@@ -3788,13 +3853,14 @@ def main():
 
     # Build tab labels
     sport_tab_labels = [f"{SPORTS_CONFIG[s]['icon']} {s}" for s in SPORTS_CONFIG]
-    all_tab_labels = sport_tab_labels + ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"]
+    _extra_tabs = ["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "⭐ Watchlist", "🏆 Leaderboard"]
+    all_tab_labels = sport_tab_labels + _extra_tabs
     all_tabs = st.tabs(all_tab_labels)
 
     sports_list = list(SPORTS_CONFIG.keys())
     _allowed = _tiers.allowed_sports(_current_tier) if _tiers else sports_list
 
-    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(["🤖 ML Models", "📈 CLV & ROI", "📊 Tracker", "🏆 Leaderboard"])], sports_list)):
+    for i, (tab, sport) in enumerate(zip(all_tabs[:-len(_extra_tabs)], sports_list)):
         with tab:
             cfg = SPORTS_CONFIG[sport]
             status = cfg.get("status", "live")
@@ -3846,16 +3912,28 @@ RAPIDAPI_KEY=your_key_here
             else:
                 render_sport_tab(sport, use_live)
 
-    # ML Models tab (fourth from last)
-    with all_tabs[-4]:
+    # ML Models tab (fifth from last)
+    with all_tabs[-5]:
         _render_ml_tab()
 
-    # CLV & ROI tab (third from last)
-    with all_tabs[-3]:
-        render_clv_tab()
+    # CLV & ROI tab (fourth from last)
+    with all_tabs[-4]:
+        if _tiers and not _tiers.can(_current_tier, "clv"):
+            _req = _tiers.TIERS["premium"]
+            st.markdown(f"""
+            <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
+                        border-radius:12px;padding:1.5rem;text-align:center;margin:1rem 0'>
+                <h3>🔒 {_req['label']} Feature</h3>
+                <p style='color:#aaa'>The CLV &amp; ROI dashboard is available on <strong>{_req['label']}</strong> (${_req['price_monthly']}/mo).</p>
+            </div>
+            """, unsafe_allow_html=True)
+            import auth_ui as _aui_clv
+            _aui_clv.show_upgrade_modal("premium", key="clv_tab")
+        else:
+            render_clv_tab()
 
-    # Tracker tab (second to last)
-    with all_tabs[-2]:
+    # Tracker tab (third from last)
+    with all_tabs[-3]:
         if _tiers and not _tiers.can(_current_tier, "tracker"):
             st.markdown("""
             <div style='background:rgba(0,212,255,0.08);border:1px solid #00d4ff;
@@ -3869,6 +3947,10 @@ RAPIDAPI_KEY=your_key_here
                 auth_ui.show_upgrade_modal("premium", key="tracker")
         else:
             render_bet_tracker()
+
+    # Watchlist tab (second to last)
+    with all_tabs[-2]:
+        _render_watchlist_tab()
 
     # Leaderboard tab (last)
     with all_tabs[-1]:
@@ -3889,6 +3971,132 @@ RAPIDAPI_KEY=your_key_here
   </p>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ── Watchlist Tab ─────────────────────────────────────────────────────────────
+def _render_watchlist_tab():
+    st.markdown("## ⭐ My Watchlist")
+    st.caption(
+        "Players you're tracking across all sports. "
+        "You'll get a Discord/Telegram alert when a watched player is listed Out or Doubtful by ESPN."
+    )
+
+    _wl_uid = (st.session_state.get("user") or {}).get("id")
+    _wl_tok = st.session_state.get("access_token")
+
+    if not _SUPABASE_CONFIGURED or not _wl_uid:
+        st.info("Log in to use the watchlist feature. Your starred players are saved across sessions.")
+        return
+
+    try:
+        from watchlist import get_watchlist, remove_watch
+    except ImportError:
+        st.error("Watchlist module not available.")
+        return
+
+    _wl_rows = get_watchlist(_wl_uid, _wl_tok)
+
+    if not _wl_rows:
+        st.markdown("""
+<div style='background:rgba(167,139,250,0.07);border:1px solid #3a3a5a;
+            border-radius:12px;padding:1.5rem;text-align:center;margin:1rem 0;'>
+  <p style='color:#888;margin:0;'>No players on your watchlist yet.</p>
+  <p style='color:#666;font-size:0.85rem;margin:0.5rem 0 0;'>
+    Open any sport tab and use the <strong>⭐ Watch Players</strong> expander to add players.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+        return
+
+    # Enrich with current ESPN injury status
+    _inj_cache: dict[str, list] = {}
+    try:
+        from espn_service import get_injuries
+        sports_in_wl = {r.get("sport", "").upper() for r in _wl_rows}
+        for sp in sports_in_wl:
+            if sp:
+                _inj_cache[sp] = get_injuries(sp)
+    except Exception:
+        pass
+
+    def _get_inj_status(player: str, sport: str) -> str:
+        injuries = _inj_cache.get(sport.upper(), [])
+        for item in injuries:
+            name = item.get("player") or item.get("name") or ""
+            na = " ".join(player.lower().split())
+            nb = " ".join(name.lower().split())
+            if na and nb and (na in nb or nb in na):
+                return item.get("status", "")
+        return ""
+
+    # Check today's board cache for each sport
+    _on_board_cache: dict[str, set] = {}
+    for sp in {r.get("sport", "").upper() for r in _wl_rows}:
+        try:
+            _cached = st.session_state.get(f"filtered_{sp}")
+            if _cached is not None and not _cached.empty:
+                _on_board_cache[sp] = set(_cached["player"].tolist())
+        except Exception:
+            pass
+
+    # Summary KPIs
+    _n_injures = sum(
+        1 for r in _wl_rows
+        if _get_inj_status(r["player"], r.get("sport", "")) in ("Out", "Doubtful", "Questionable")
+    )
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Watching", len(_wl_rows))
+    k2.metric("Injury Alerts", _n_injures, delta="action needed" if _n_injures else None,
+              delta_color="inverse")
+    _on_board = sum(
+        1 for r in _wl_rows
+        if r["player"] in _on_board_cache.get(r.get("sport", "").upper(), set())
+    )
+    k3.metric("On Today's Board", _on_board)
+
+    st.divider()
+
+    _STATUS_COLOR = {
+        "Out": "#ff4444", "Doubtful": "#ff8c00", "Questionable": "#ffd700",
+    }
+
+    for r in _wl_rows:
+        player = r.get("player", "")
+        sport  = r.get("sport", "")
+        market = r.get("market", "")
+        line   = r.get("line")
+        inj    = _get_inj_status(player, sport)
+        on_bd  = player in _on_board_cache.get(sport.upper(), set())
+
+        inj_html = (
+            f'<span style="background:{_STATUS_COLOR.get(inj,"#555")};color:#fff;'
+            f'border-radius:8px;padding:1px 8px;font-size:0.78rem;font-weight:700;">{inj}</span>'
+            if inj in _STATUS_COLOR else ""
+        )
+        board_badge = (
+            '<span style="background:#1a472a;color:#52b788;border-radius:8px;'
+            'padding:1px 8px;font-size:0.78rem;font-weight:600;margin-left:4px;">On board</span>'
+            if on_bd else ""
+        )
+        line_str = f" O{line}" if line is not None else ""
+
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            st.markdown(
+                f"**{player}** · {sport} · {market}{line_str} "
+                f"{inj_html}{board_badge}",
+                unsafe_allow_html=True,
+            )
+        with c2:
+            if st.button("Remove", key=f"wl_rm_{r['id']}", help=f"Stop watching {player}"):
+                remove_watch(_wl_uid, player, sport, market, _wl_tok)
+                st.rerun()
+
+    st.divider()
+    st.caption(
+        "Injury status sourced from ESPN public API — updated every 5 minutes. "
+        "Alerts fire via Discord/Telegram each morning when the scrape job runs."
+    )
 
 
 # ── CLV Leaderboard ───────────────────────────────────────────────────────────
