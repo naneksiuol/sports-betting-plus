@@ -86,7 +86,7 @@ def save_game_lines_cache(sport: str) -> bool:
 
 
 def push_cache_to_github():
-    """Git add/commit/push the props cache files so Streamlit Cloud picks them up.
+    """Git add/commit/push the props and game-lines cache files.
 
     Rebases onto origin/main before pushing (the push silently failed for days
     when local main fell behind the remote) and retries with backoff, printing
@@ -95,7 +95,8 @@ def push_cache_to_github():
     import time
     try:
         repo = Path(__file__).parent
-        cache_files = list(DATA_DIR.glob("props_cache_*.json")) + list(DATA_DIR.glob("game_lines_*.json"))
+        cache_files = (list(DATA_DIR.glob("props_cache_*.json"))
+                       + list(DATA_DIR.glob("game_lines_*.json")))
         if not cache_files:
             return
         paths = [str(f) for f in cache_files]
@@ -187,6 +188,18 @@ def main():
 
         except Exception as e:
             print(f"    [ERR] {sport} error: {e}")
+
+    # ── Watchlist injury alerts ───────────────────────────────────────────────
+    print("\n  Checking watchlist injury alerts…")
+    try:
+        from watchlist import run_injury_alerts
+        n_alerts = run_injury_alerts()
+        if n_alerts:
+            print(f"    [OK] Sent {n_alerts} watchlist injury alert(s).")
+        else:
+            print("    [INFO] No new injury alerts for watched players.")
+    except Exception as e:
+        print(f"    [WARN] Watchlist alert check failed: {e}")
 
     # Push all cache files to GitHub so Streamlit Cloud sees them
     print("\n  Pushing cache to GitHub…")
