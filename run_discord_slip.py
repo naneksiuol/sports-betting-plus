@@ -147,7 +147,7 @@ def main():
 
     discord_ok = True
 
-    SPORTS = ["MLB", "NBA", "WNBA", "NHL"]
+    SPORTS = ["MLB", "NBA", "WNBA", "NHL", "NFL"]
     record = get_stats()
     clv_avg = get_clv_avg(n_recent=30)
     all_sent = 0

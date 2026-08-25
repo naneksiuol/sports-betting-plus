@@ -131,8 +131,7 @@ SPORTS_CONFIG = {
             "player_anytime_td": "Anytime TD",
         },
         "icon": "🏈",
-        "status": "coming_soon",
-        "coming_soon_msg": "NFL season starts September 2026. Player props will auto-populate when available.",
+        "status": "live",
     },
     "NCAAF": {
         "key": "americanfootball_ncaaf",

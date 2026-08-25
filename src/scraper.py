@@ -64,6 +64,7 @@ SPORT_SLUG = {
     "NBA":  "nba",
     "WNBA": "wnba",
     "NHL":  "nhl",
+    "NFL":  "nfl",
 }
 
 

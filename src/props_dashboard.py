@@ -3424,7 +3424,7 @@ def _render_ml_tab():
             cols = st.columns(len(statuses))
             for col, (sport, info) in zip(cols, statuses.items()):
                 with col:
-                    icon = {"MLB": "⚾", "NBA": "🏀", "WNBA": "🏀", "NHL": "🏒"}.get(sport, "🎯")
+                    icon = {"MLB": "⚾", "NBA": "🏀", "WNBA": "🏀", "NHL": "🏒", "NFL": "🏈"}.get(sport, "🎯")
                     st.markdown(f"**{icon} {sport}**")
                     if info["status"] == "trained":
                         auc_val = info.get("cv_auc")
@@ -3485,7 +3485,7 @@ def _render_ml_tab():
 
             # Controls
             sc1, sc2, sc3 = st.columns(3)
-            _sport_filter  = sc1.selectbox("Sport filter", ["All", "MLB", "NBA", "WNBA", "NHL"], key="steam_sport")
+            _sport_filter  = sc1.selectbox("Sport filter", ["All", "MLB", "NBA", "WNBA", "NHL", "NFL"], key="steam_sport")
             _min_move      = sc2.slider("Min move (cents)", 1, 20, 5, key="steam_min") / 100
             _signal_filter = sc3.selectbox("Signal type", ["All", "Steam only", "RLM only", "Steam+RLM"], key="steam_sig")
 

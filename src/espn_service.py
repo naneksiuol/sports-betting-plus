@@ -25,6 +25,7 @@ _SPORT_SLUGS: dict[str, str] = {
     "NBA":  "basketball/nba",
     "WNBA": "basketball/wnba",
     "NHL":  "hockey/nhl",
+    "NFL":  "football/nfl",
 }
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
